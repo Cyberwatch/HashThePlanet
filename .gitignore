@@ -1,0 +1,6 @@
+.vscode/*
+dist/*
+*.egg-info
+
+# do not remove the dist folder
+!dist/.keep
