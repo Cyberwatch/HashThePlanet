@@ -1,1 +1,5 @@
-loguru==0.5.3
+loguru>=0.5.3
+GitPython>=3.1.18
+gitdb>=4.0.7
+smmap>=4.0.0
+SQLAlchemy>=1.4.22
