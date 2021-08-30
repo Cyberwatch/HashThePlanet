@@ -65,7 +65,7 @@ class HashThePlanet():
         Computes all hashs.
         """
         try:
-            with open(self._input_file, "r") as file_descriptor:
+            with open(self._input_file, "r", encoding="utf-8") as file_descriptor:
                 logger.info(f"Start reading {self._input_file}")
                 csv_reader = reader(file_descriptor)
                 header = next(csv_reader)
