@@ -22,7 +22,7 @@ class GitResource():
     """
     def __init__(self, database: DbConnector):
         """
-        Initialisation requires a DbConnector object
+        Initialisation requires a DbConnector object.
         """
         self._database = database
 
