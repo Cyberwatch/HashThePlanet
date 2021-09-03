@@ -58,7 +58,7 @@ class GitResource():
 
     def checkout_and_compute(self, session, directory, repository: Repo, tag):
         """
-        This method chechkout the provided tag of the repository,
+        This method checkout the provided tag of the repository,
         stores files information in the database and computes the hashs.
         """
         repository.git.checkout(f"tags/{tag}")
