@@ -33,9 +33,9 @@ class HashThePlanet():
         self._input_file = input_file
         self._database = DbConnector()
 
-        self._must_create = not os.path.exists(self._output_file)
         self._engine = create_engine(f"sqlite:///{self._output_file}")
-        if self._must_create:
+
+        if not os.path.exists(self._output_file):
             Base.metadata.create_all(self._engine)
 
         self._git_resource = GitResource(self._database)
@@ -65,36 +65,33 @@ class HashThePlanet():
         Computes all hashs.
         """
         try:
-            with open(self._input_file, "r", encoding="utf-8") as file_descriptor:
+            with open(self._input_file, "r", encoding="utf-8", newline="") as file_descriptor:
                 logger.info(f"Start reading {self._input_file}")
                 csv_reader = reader(file_descriptor)
-                header = next(csv_reader)
-                csv_reader = reader(file_descriptor)
 
-                if header:
-                    for row in csv_reader:
-                        with tempfile.TemporaryDirectory() as tmp_dir_name:
-                            technology, url = row
-                            repository = self._git_resource.clone_repository(technology, url, tmp_dir_name)
+                for row in csv_reader:
+                    with tempfile.TemporaryDirectory() as tmp_dir_name:
+                        technology, url = row
+                        repository = self._git_resource.clone_repository(technology, url, tmp_dir_name)
 
-                            logger.debug("Retrieving tags ...")
-                            path = f"{tmp_dir_name}/{technology}"
-                            git_tags = self._git_resource.get_tags(repository)
-                            logger.debug(f"Git tags : {git_tags}")
-                            logger.debug(f"Inserting tags for {technology} ...")
+                        logger.debug("Retrieving tags ...")
+                        path = f"{tmp_dir_name}/{technology}"
+                        git_tags = self._git_resource.get_tags(repository)
+                        logger.debug(f"Git tags : {git_tags}")
+                        logger.debug(f"Inserting tags for {technology} ...")
 
-                            with self._session.begin() as session: # pylint: disable=no-member
-                                self._database.insert_tags(session, technology, git_tags)
+                        with self._session.begin() as session: # pylint: disable=no-member
+                            self._database.insert_tags(session, technology, git_tags)
 
-                            logger.debug(f"Retrieving tags from database for {technology}")
+                        logger.debug(f"Retrieving tags from database for {technology}")
 
-                            with self._session.begin() as session: # pylint: disable=no-member
-                                tags = self._database.get_tags(session, technology)
-                                logger.debug(f"Database tags : {tags}")
+                        with self._session.begin() as session: # pylint: disable=no-member
+                            tags = self._database.get_tags(session, technology)
+                            logger.debug(f"Database tags : {tags}")
 
-                                for tag in tags:
-                                    logger.debug(f"Checkout and compute hashs for tag {tag} ...")
-                                    self._git_resource.checkout_and_compute(
+                            for tag in tags:
+                                logger.debug(f"Checkout and compute hashs for tag {tag} ...")
+                                self._git_resource.checkout_and_compute(
                                         session, path, repository, tag.tag)
 
             logger.info("Computing done")
@@ -153,6 +150,6 @@ def main():
     hashtheplanet = HashThePlanet(args.output, args.input)
     logger.debug("Start computing hashs")
     hashtheplanet.compute_hashs()
-    logger.debug("Retieving computed hashs")
+    logger.debug("Retrieving computed hashs")
     hashtheplanet.show_all_hashs()
     hashtheplanet.close()
