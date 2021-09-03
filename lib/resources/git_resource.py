@@ -5,9 +5,10 @@ This module handles Git resources to generate hashs.
 import glob
 import hashlib
 import os
+import tempfile
 
 # third party imports
-from git import Git, Repo
+from git import Git, Repo, GitCommandError
 from loguru import logger
 
 # project imports
@@ -80,3 +81,36 @@ class GitResource():
                     logger.debug(f"Hash value : {hash_value}")
 
                     self._database.insert_or_update_hash(session, hash_value, technology, tag)
+
+    def clone_checkout_and_compute_hashs(self, session_scope, url):
+        """
+        This method clones the repository from url, retrieves and stores tags in the database,
+        then checkout each tag, sotres files information in the database and computes the hashs.
+        """
+        technology = url.split('.git')[0].split('/')[-1]
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+
+            try:
+                repository = self.clone_repository(technology, url, tmp_dir_name)
+            except GitCommandError as error:
+                logger.warning(f"Error while cloning repository on {url}: {error}")
+                return
+
+            logger.debug("Retrieving tags ...")
+            path = f"{tmp_dir_name}/{technology}"
+            git_tags = self.get_tags(repository)
+            logger.debug(f"Git tags : {git_tags}")
+
+            logger.debug(f"Inserting tags for {technology} ...")
+            with session_scope() as session:
+                self._database.insert_tags(session, technology, git_tags)
+
+            logger.debug(f"Retrieving tags from database for {technology}")
+            with session_scope() as session:
+                tags = self._database.get_tags(session, technology)
+                logger.debug(f"Database tags : {tags}")
+
+                for tag in tags:
+                    logger.debug(f"Checkout and compute hashs for tag {tag} ...")
+                    self.checkout_and_compute(
+                        session, path, repository, tag.tag)

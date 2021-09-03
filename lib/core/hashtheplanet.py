@@ -3,10 +3,10 @@ The main module for HashThePlanet
 """
 # standard imports
 import argparse
+from contextlib import contextmanager
 from csv import reader
 import os
 import sys
-import tempfile
 
 # third party imports
 from loguru import logger
@@ -42,6 +42,21 @@ class HashThePlanet():
 
         self._session = sessionmaker(self._engine)
 
+    @contextmanager
+    def session_scope(self):
+        """
+        Provide a transactional scope around a series of operations.
+        """
+        session = self._session()
+        try:
+            yield session
+            session.commit()
+        except:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
     def close(self):
         """
         Close the connections with the database.
@@ -52,7 +67,7 @@ class HashThePlanet():
         """
         Prints out all known hashs.
         """
-        with self._session.begin() as session: # pylint: disable=no-member
+        with self.session_scope() as session:
             hashs = self._database.get_all_hashs(session)
             if hashs:
                 for hash_value in hashs:
@@ -70,29 +85,11 @@ class HashThePlanet():
                 csv_reader = reader(file_descriptor)
 
                 for row in csv_reader:
-                    with tempfile.TemporaryDirectory() as tmp_dir_name:
-                        technology, url = row
-                        repository = self._git_resource.clone_repository(technology, url, tmp_dir_name)
-
-                        logger.debug("Retrieving tags ...")
-                        path = f"{tmp_dir_name}/{technology}"
-                        git_tags = self._git_resource.get_tags(repository)
-                        logger.debug(f"Git tags : {git_tags}")
-                        logger.debug(f"Inserting tags for {technology} ...")
-
-                        with self._session.begin() as session: # pylint: disable=no-member
-                            self._database.insert_tags(session, technology, git_tags)
-
-                        logger.debug(f"Retrieving tags from database for {technology}")
-
-                        with self._session.begin() as session: # pylint: disable=no-member
-                            tags = self._database.get_tags(session, technology)
-                            logger.debug(f"Database tags : {tags}")
-
-                            for tag in tags:
-                                logger.debug(f"Checkout and compute hashs for tag {tag} ...")
-                                self._git_resource.checkout_and_compute(
-                                        session, path, repository, tag.tag)
+                    if not row:
+                        logger.warning("Input file contains an empty line")
+                    else:
+                        url = row[0]
+                        self._git_resource.clone_checkout_and_compute_hashs(self.session_scope, url)
 
             logger.info("Computing done")
 
