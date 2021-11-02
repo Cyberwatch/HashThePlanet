@@ -3,6 +3,7 @@ This module handles connections and requests to the database
 """
 # standard imports
 from json import JSONEncoder, loads
+from typing import List
 
 # third party imports
 from loguru import logger
@@ -107,7 +108,7 @@ class DbConnector():
             logger.debug(f"Entry {entry} already exists in files database")
 
     @staticmethod
-    def insert_or_update_hash(session, hash_value, technology, version):
+    def insert_or_update_hash(session, hash_value: str, technology: str, versions: List[str]):
         """
         Insert a new hash related to technology and version in hash table if it does not exist yet.
         If it already exists, update related versions.
@@ -117,22 +118,20 @@ class DbConnector():
 
         if not entry:
             new_hash = Hash(hash=hash_value, technology=technology, versions=JSONEncoder() \
-                .encode({"versions": [version]}))
+                .encode({"versions": versions}))
             session.add(new_hash)
             logger.info(f"Entry {new_hash} added to hash database")
         else:
-            existing_versions = loads(entry.versions)["versions"]
+            existing_versions: List[str] = loads(entry.versions)["versions"]
 
-            if version not in existing_versions:
-                existing_versions.append(version)
-                new_versions = existing_versions
-                stmt = update(Hash).where(Hash.hash==hash_value) \
-                    .values(versions=JSONEncoder().encode({"versions": new_versions})) \
-                        .execution_options(synchronize_session="fetch")
-                session.execute(stmt)
-                logger.debug(f"Entry {entry} updated with new versions {new_versions}")
-            else:
-                logger.debug(f"Version {version} already registered for hash {entry.hash}")
+            for version in versions:
+                if version not in existing_versions:
+                    existing_versions.append(version)
+            stmt = update(Hash).where(Hash.hash==hash_value) \
+                .values(versions=JSONEncoder().encode({"versions": existing_versions})) \
+                    .execution_options(synchronize_session="fetch")
+            session.execute(stmt)
+            logger.debug(f"Entry {entry} updated with new versions {versions}")
 
     @staticmethod
     def get_all_hashs(session):

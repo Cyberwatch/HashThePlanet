@@ -103,7 +103,7 @@ def test_insert_or_update_hash(dbsession):
     techno = "jQuery"
     versions = ["1.2.3", "1.3.4"]
 
-    DbConnector.insert_or_update_hash(dbsession, hash_value, techno, versions[0])
+    DbConnector.insert_or_update_hash(dbsession, hash_value, techno, [versions[0]])
 
     inserted_hash = dbsession.query(Hash).first()
     assert inserted_hash.hash == hash_value
@@ -122,8 +122,8 @@ def test_insert_or_update_hash_already_added_hash(dbsession):
     techno = "jQuery"
     versions = ["1.2.3", "1.3.4"]
 
-    DbConnector.insert_or_update_hash(dbsession, hash_value, techno, versions[0])
-    DbConnector.insert_or_update_hash(dbsession, hash_value, techno, versions[1])
+    DbConnector.insert_or_update_hash(dbsession, hash_value, techno, [versions[0]])
+    DbConnector.insert_or_update_hash(dbsession, hash_value, techno, [versions[1]])
     # hash already added but not this version
     inserted_hash = dbsession.query(Hash)
     assert inserted_hash.count() == 1
@@ -141,9 +141,9 @@ def test_insert_or_update_hash_already_added_hash_and_version(dbsession):
     techno = "jQuery"
     versions = ["1.2.3", "1.3.4"]
 
-    DbConnector.insert_or_update_hash(dbsession, hash_value, techno, versions[0])
-    DbConnector.insert_or_update_hash(dbsession, hash_value, techno, versions[1])
-    DbConnector.insert_or_update_hash(dbsession, hash_value, techno, versions[1])
+    DbConnector.insert_or_update_hash(dbsession, hash_value, techno, [versions[0]])
+    DbConnector.insert_or_update_hash(dbsession, hash_value, techno, [versions[1]])
+    DbConnector.insert_or_update_hash(dbsession, hash_value, techno, [versions[1]])
     # hash and version already added
     inserted_hash = dbsession.query(Hash)
     assert inserted_hash.count() == 1
