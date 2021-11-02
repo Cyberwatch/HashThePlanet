@@ -76,6 +76,13 @@ class HashThePlanet():
             else:
                 logger.info("No hash to display")
 
+    def find_hash(self, file_hash):
+        """
+        Finds the associated technology to a hash.
+        """
+        with self.session_scope() as session:
+            logger.success(f"Found: {self._database.find_hash(session, file_hash)}")
+
     def compute_hashs(self):
         """
         Computes all hashs.
@@ -149,7 +156,7 @@ def main():
     )
 
     parser.add_argument(
-        "--input",
+        "-i", "--input",
         default="src/tech_list.csv",
         help="Input file (csv) with git repository urls"
     )
@@ -168,6 +175,18 @@ def main():
     )
 
     parser.add_argument(
+        "--hash",
+        default=None,
+        help="File hash"
+    )
+
+    parser.add_argument(
+        "-f", "--file",
+        default=None,
+        help="File path"
+    )
+
+    parser.add_argument(
         "--version",
         action="version",
         help="Show program's version number and exit",
@@ -183,6 +202,15 @@ def main():
 
     logger.info("#### HashThePlanet ####")
     hashtheplanet = HashThePlanet(args.output, args.input)
+
+    if args.file is not None:
+        readable_hash = Hash.hash_file(args.file)
+        hashtheplanet.find_hash(readable_hash)
+        return
+    if args.hash is not None:
+        hashtheplanet.find_hash(args.hash)
+        return
+
     logger.debug("Start computing hashs")
     hashtheplanet.compute_hashs()
     logger.debug("Retrieving computed hashs")
