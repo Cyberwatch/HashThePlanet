@@ -2,15 +2,14 @@
 This module handles connections and requests to the database
 """
 # standard imports
+import hashlib
 from json import JSONEncoder, loads
 from typing import List
 
 # third party imports
 from loguru import logger
-from sqlalchemy import Column, Text, JSON
-from sqlalchemy import select, update
+from sqlalchemy import JSON, Column, Text, select, update
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
-
 
 Base = declarative_base()
 
@@ -53,6 +52,32 @@ class Hash(Base):
     hash = Column(Text, nullable=False, primary_key=True)
     technology = Column(Text, nullable=False)
     versions = Column(JSON, nullable=False)
+
+    @staticmethod
+    def hash_file(file_path: str) -> str:
+        """
+        This method computes the SHA256 hash of the provided file and returns it.
+        """
+        try:
+            with open(file_path, 'rb') as file_descriptor:
+                file_bytes = file_descriptor.read() # read entire file as bytes
+                readable_hash = hashlib.sha256(file_bytes).hexdigest()
+                return readable_hash
+        except OSError as error:
+            logger.error(f"Error with file {file_path} : {error}")
+        return None
+
+    @staticmethod
+    def hash_bytes(data: bytes) -> str:
+        """
+        This method computes the SHA256 hash of the provided data and returns it.
+        """
+        try:
+            readable_hash = hashlib.sha256(data).hexdigest()
+            return readable_hash
+        except OSError as error:
+            logger.error(f"Error with file: {error}")
+        return None
 
     def __repr__(self):
         return f"Hash (hash={self.hash}, technology={self.technology}, versions={self.versions})"
@@ -103,7 +128,7 @@ class DbConnector():
         if not entry:
             new_file = File(technology=technology, path=path)
             session.add(new_file)
-            logger.info(f"Entry {new_file} added to file database")
+            logger.debug(f"Entry {new_file} added to file database")
         else:
             logger.debug(f"Entry {entry} already exists in files database")
 
@@ -120,7 +145,7 @@ class DbConnector():
             new_hash = Hash(hash=hash_value, technology=technology, versions=JSONEncoder() \
                 .encode({"versions": versions}))
             session.add(new_hash)
-            logger.info(f"Entry {new_hash} added to hash database")
+            logger.debug(f"Entry {new_hash} added to hash database")
         else:
             existing_versions: List[str] = loads(entry.versions)["versions"]
 
@@ -145,7 +170,7 @@ class DbConnector():
     @staticmethod
     def find_hash(session, hash_str: str):
         """
-        Returns the technology and its versions from a hash.
+        Returns a technology and its versions from a hash.
         """
         return session.query(Hash.technology, Hash.versions).filter(Hash.hash == hash_str).first()
 
