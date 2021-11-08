@@ -7,7 +7,7 @@ from json import JSONEncoder
 # third party imports
 
 # project imports
-from lib.sql.db_connector import DbConnector, Version, File, Hash
+from hashtheplanet.sql.db_connector import DbConnector, Version, File, Hash
 
 def test_insert_version(dbsession):
     """

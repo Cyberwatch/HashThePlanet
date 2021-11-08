@@ -9,7 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 # project imports
-from lib.sql.db_connector import Base
+from hashtheplanet.sql.db_connector import Base
 
 @pytest.fixture(name="engine", scope="session")
 def fixture_engine():
