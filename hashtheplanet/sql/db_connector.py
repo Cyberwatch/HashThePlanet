@@ -10,8 +10,6 @@ from sqlalchemy import Column, Text, JSON
 from sqlalchemy import select, update
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
 
-# project imports
-
 
 Base = declarative_base()
 
@@ -144,3 +142,20 @@ class DbConnector():
         stmt = select(Hash)
         hashs = session.execute(stmt).scalars().all()
         return hashs
+
+    @staticmethod
+    def find_hash(session, hash_str: str):
+        """
+        Returns the technology and its versions from a hash.
+        """
+        return session.query(Hash.technology, Hash.versions).filter(Hash.hash == hash_str).first()
+
+    @staticmethod
+    def get_static_files(session):
+        """
+        Returns all files ending with .html, .md or .txt
+        """
+        static_files_query = session \
+                            .query(File.path) \
+                            .filter(File.path.regexp_match(r"([a-zA-Z0-9\s_\\.\-\(\):])+(.html|.md|.txt)$"))
+        return [path for path, in static_files_query]

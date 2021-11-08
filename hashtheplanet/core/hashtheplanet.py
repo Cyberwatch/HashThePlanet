@@ -3,10 +3,11 @@ The main module for HashThePlanet
 """
 # standard imports
 import argparse
-from contextlib import contextmanager
-from csv import reader
 import os
 import sys
+from contextlib import contextmanager
+from csv import reader
+from typing import List, Tuple
 
 # third party imports
 from loguru import logger
@@ -14,8 +15,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 # project imports
-from sql.db_connector import DbConnector, Base
 from resources.git_resource import GitResource
+from sql.db_connector import Base, DbConnector, Hash
 
 logger.remove()
 
@@ -25,7 +26,7 @@ class HashThePlanet():
     """
     The HashThePlanet class
     """
-    def __init__(self, output_file, input_file):
+    def __init__(self, output_file: str, input_file: str):
         """
         Initialisation requires an output filename and an input filename (csv).
         """
@@ -95,6 +96,43 @@ class HashThePlanet():
 
         except OSError as error:
             logger.error(f"Error: {error}")
+
+    def analyze_file(self, file_path: str) -> Tuple[str, dict]:
+        """
+        Analyze a file and returns its technology and its versions
+        """
+        file_hash = Hash.hash_file(file_path)
+
+        if file_hash is None:
+            return []
+        return self.analyze_hash(file_hash)
+
+    def analyze_str(self, str_data: str) -> Tuple[str, dict]:
+        """
+        Analyze a string and returns its technology and its versions
+        """
+        file_hash = Hash.hash_bytes(str_data)
+
+        if file_hash is None:
+            return []
+        return self.analyze_hash(file_hash)
+
+    def analyze_hash(self, file_hash: str) -> Tuple[str, dict]:
+        """
+        Analyze a hash and returns its technology and its versions
+        """
+        if file_hash is None:
+            return []
+        with self.session_scope() as session:
+            return self._database.find_hash(session, file_hash)
+
+    def get_static_files(self) -> List[str]:
+        """
+        Returns all stored static files from the database
+        """
+        with self.session_scope() as session:
+            return self._database.get_static_files(session)
+
 
 def main():
     """
