@@ -7,72 +7,72 @@ from json import JSONEncoder
 # third party imports
 
 # project imports
-from lib.sql.db_connector import DbConnector, Tag, File, Hash
+from lib.sql.db_connector import DbConnector, Version, File, Hash
 
-def test_insert_tag(dbsession):
+def test_insert_version(dbsession):
     """
-    Unit tests for insert_tag method.
-    """
-
-    techno = "jQuery"
-    tag = "1.2.3"
-
-    DbConnector.insert_tag(dbsession, techno, tag)
-
-    inserted_tag = dbsession.query(Tag).first()
-    assert inserted_tag.technology == techno
-    assert inserted_tag.tag == tag
-
-
-def test_insert_tag_already_added_tag(dbsession):
-    """
-    Unit tests for insert_tag method.
-    If techno was already added with this tag,
-    it ensures that the tag is not added again.
+    Unit tests for insert_version method.
     """
 
     techno = "jQuery"
-    tag = "1.2.3"
+    version = "1.2.3"
 
-    DbConnector.insert_tag(dbsession, techno, tag)
-    DbConnector.insert_tag(dbsession, techno, tag)
-    # tag already added before
-    assert dbsession.query(Tag).count() == 1
+    DbConnector.insert_version(dbsession, techno, version)
+
+    inserted_version = dbsession.query(Version).first()
+    assert inserted_version.technology == techno
+    assert inserted_version.version == version
 
 
-def test_insert_tags(dbsession):
+def test_insert_version_already_added_version(dbsession):
     """
-    Unit tests for insert_tags method.
-    """
-
-    techno = "jQuery"
-    tags = ["1.2.3", "1.3.4", "1.3.5"]
-
-    DbConnector().insert_tags(dbsession, techno, tags)
-
-    inserted_tags = dbsession.query(Tag)
-    assert inserted_tags.count() == 3
-    for idx, _ in enumerate(inserted_tags):
-        assert inserted_tags[idx].technology == techno
-        assert inserted_tags[idx].tag == tags[idx]
-
-
-def test_get_tags(dbsession):
-    """
-    Unit tests for get_tags method.
+    Unit tests for insert_version method.
+    If techno was already added with this version,
+    it ensures that the version is not added again.
     """
 
     techno = "jQuery"
-    tags = ["1.2.3", "1.3.4"]
+    version = "1.2.3"
 
-    dbsession.add(Tag(technology=techno, tag=tags[0]))
-    dbsession.add(Tag(technology=techno, tag=tags[1]))
+    DbConnector.insert_version(dbsession, techno, version)
+    DbConnector.insert_version(dbsession, techno, version)
+    # version already added before
+    assert dbsession.query(Version).count() == 1
 
-    retrieved_tags = DbConnector.get_tags(dbsession, techno)
-    assert len(retrieved_tags) == 2
-    for idx, _ in enumerate(retrieved_tags):
-        assert retrieved_tags[idx].technology == techno
-        assert retrieved_tags[idx].tag == tags[idx]
+
+def test_insert_versions(dbsession):
+    """
+    Unit tests for insert_versions method.
+    """
+
+    techno = "jQuery"
+    versions = ["1.2.3", "1.3.4", "1.3.5"]
+
+    DbConnector().insert_versions(dbsession, techno, versions)
+
+    inserted_versions = dbsession.query(Version)
+    assert inserted_versions.count() == 3
+    for idx, _ in enumerate(inserted_versions):
+        assert inserted_versions[idx].technology == techno
+        assert inserted_versions[idx].version == versions[idx]
+
+
+def test_get_versions(dbsession):
+    """
+    Unit tests for get_versions method.
+    """
+
+    techno = "jQuery"
+    versions = ["1.2.3", "1.3.4"]
+
+    dbsession.add(Version(technology=techno, version=versions[0]))
+    dbsession.add(Version(technology=techno, version=versions[1]))
+
+    retrieved_versions = DbConnector.get_versions(dbsession, techno)
+    assert len(retrieved_versions) == 2
+    for idx, _ in enumerate(retrieved_versions):
+        assert retrieved_versions[idx].technology == techno
+        assert retrieved_versions[idx].version == versions[idx]
 
 
 def test_insert_file(dbsession):
