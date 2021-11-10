@@ -6,7 +6,6 @@ import argparse
 import os
 import sys
 from contextlib import contextmanager
-from csv import reader
 from typing import List, Tuple
 
 # third party imports
@@ -15,9 +14,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 # project imports
-from hashtheplanet.resources.git_resource import GitResource
+from hashtheplanet.config.config import Config
+from hashtheplanet.executor.executor import Executor
 from hashtheplanet.sql.db_connector import Base, DbConnector, Hash
-
 
 HASHTHEPLANET_VERSION = "HashThePlanet 0.0.0"
 
@@ -31,16 +30,16 @@ class HashThePlanet():
         """
         self._output_file = output_file
         self._input_file = input_file
-        self._database = DbConnector()
-
         self._engine = create_engine(f"sqlite:///{self._output_file}")
 
         if not os.path.exists(self._output_file):
             Base.metadata.create_all(self._engine)
 
-        self._git_resource = GitResource(self._database)
-
         self._session = sessionmaker(self._engine)
+
+        self._database = DbConnector()
+        self._config = Config()
+        self._executor = Executor(self._database, self.session_scope)
 
     @contextmanager
     def session_scope(self):
@@ -87,16 +86,13 @@ class HashThePlanet():
         Computes all hashs.
         """
         try:
-            with open(self._input_file, "r", encoding="utf-8", newline="") as file_descriptor:
-                logger.info(f"Start reading {self._input_file}")
-                csv_reader = reader(file_descriptor)
+            self._config.parse(self._input_file)
 
-                for row in csv_reader:
-                    if not row:
-                        logger.warning("Input file contains an empty line")
-                    else:
-                        url = row[0]
-                        self._git_resource.clone_checkout_and_compute_hashs(self.session_scope, url)
+            for resource_name in self._config.get_used_resources():
+                targets = self._config.get_targets(resource_name)
+
+                for target in targets:
+                    self._executor.execute(resource_name, target)
 
             logger.info("Computing done")
 
@@ -162,8 +158,8 @@ def main():
 
     parser.add_argument(
         "-i", "--input",
-        default="src/tech_list.csv",
-        help="Input file (csv) with git repository urls"
+        default="src/tech_list.json",
+        help="Input file (json) with resources targets"
     )
 
     parser.add_argument(

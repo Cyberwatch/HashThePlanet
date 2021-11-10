@@ -3,6 +3,7 @@ from typing import Dict
 from unittest import mock
 from unittest.mock import MagicMock, mock_open, patch
 from loguru import logger
+from hashtheplanet.config.config import Config
 from hashtheplanet.resources.git_resource import GitResource
 
 from hashtheplanet.sql.db_connector import DbConnector, Hash
@@ -119,32 +120,45 @@ def test_find_hash():
 
 def test_compute_hashs():
     files = {
-        "foobar.txt": "https://foo.bar/foobar.git",
+        "foobar.txt": """
+        {
+            "$schema": "./schema.json",
+            "git": {
+                "targets": [
+                    "https://github.com/silexphp/Silex.git"
+                ]
+            },
+            "npm": {
+                "targets": [
+                ]
+            }
+        }
+        """,
         "empty.txt": "\n"
     }
+
     with mock.patch("builtins.open", get_mock_open(files)) as mock_open, \
-        mock.patch.object(GitResource, "clone_checkout_and_compute_hashs", return_value=None) as mock_clone_checkout:
+        mock.patch.object(GitResource, "compute_hashes", return_value=None) as mock_compute_hashes:
         htp = HashThePlanet("output.txt", "foobar.txt")
         htp.compute_hashs()
 
-        mock_open.assert_called_once_with("foobar.txt", "r", encoding="utf-8", newline="")
-        mock_clone_checkout.assert_called_once()
+        mock_open.assert_called_once_with("foobar.txt", "r", encoding="utf-8")
+        mock_compute_hashes.assert_called_once()
 
         mock_open.reset_mock()
-        mock_clone_checkout.reset_mock()
+        mock_compute_hashes.reset_mock()
 
         htp = HashThePlanet("output.txt", "empty.txt")
         htp.compute_hashs()
 
-        mock_open.assert_called_once_with("empty.txt", "r", encoding="utf-8", newline="")
-        mock_clone_checkout.assert_not_called()
+        mock_open.assert_called_once_with("empty.txt", "r", encoding="utf-8")
+        mock_compute_hashes.assert_not_called()
 
-    with mock.patch("builtins.open", MagicMock(side_effect=OSError("error"))) as mock_open, \
+    with mock.patch.object(Config, "parse", MagicMock(side_effect=OSError("error"))) as mock_open, \
         mock.patch.object(logger, "error") as mock_error_logger:
         htp = HashThePlanet("output.txt", "foobar.txt")
         htp.compute_hashs()
 
-        mock_open.assert_called_once_with("foobar.txt", "r", encoding="utf-8", newline="")
         mock_error_logger.assert_called_once()
 
 def test_analyze_file():

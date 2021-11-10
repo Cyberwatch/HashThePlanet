@@ -16,8 +16,8 @@ from git.refs.tag import Tag
 from loguru import logger
 
 # project imports
-from hashtheplanet.sql.db_connector import DbConnector, Hash
-from hashtheplanet.sql.db_connector import Version as VersionTable
+from hashtheplanet.sql.db_connector import Hash, Version as VersionTable
+from hashtheplanet.resources.resource import Resource
 
 # types
 FilePath = str
@@ -27,15 +27,11 @@ FileHash = str
 GitFileMetadata = Tuple[FilePath, TagName, BlobHash]
 FileMetadata = Tuple[FilePath, TagName, FileHash]
 
-class GitResource():
+class GitResource(Resource):
     """
     This class implements methods to generate hashs from Git resources.
     """
-    def __init__(self, database: DbConnector):
-        """
-        Initialisation requires a DbConnector object.
-        """
-        self._database = database
+    name = "git"
 
     @staticmethod
     def clone_repository(url, path) -> Repo:
@@ -154,7 +150,7 @@ class GitResource():
         technology: str
     ):
         """
-        This method saves all files with their hash & theirs versions to the database.
+        This method saves all files with their hash & their versions to the database.
         """
         with session_scope() as session:
             file_record = {}
@@ -197,20 +193,20 @@ class GitResource():
                 result.append(found_tag)
         return result
 
-    def clone_checkout_and_compute_hashs(self, session_scope, url: str):
+    def compute_hashes(self, session_scope, target: str):
         """
         This method clones the repository from url, retrieves tags, compares each tags to retrieve only modified files,
         computes their hashes and then stores the tags & files information in the database.
         """
-        technology = url.split('.git')[0].split('/')[-1]
+        technology = target.split('.git')[0].split('/')[-1]
         tags: List[Tag] = []
         files: List[GitFileMetadata] = []
 
         with tempfile.TemporaryDirectory() as tmp_dir_name:
             try:
-                repo = self.clone_repository(url, tmp_dir_name)
+                repo = self.clone_repository(target, tmp_dir_name)
             except GitCommandError as error:
-                logger.warning(f"Error while cloning repository on {url}: {error}")
+                logger.warning(f"Error while cloning repository on {target}: {error}")
                 return
 
             logger.info("Retrieving tags ...")
