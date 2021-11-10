@@ -2,7 +2,6 @@
 This module handles Git resources to generate hashs.
 """
 # standard imports
-import hashlib
 import os
 import subprocess
 import tempfile
@@ -17,7 +16,8 @@ from git.refs.tag import Tag
 from loguru import logger
 
 # project imports
-from hashtheplanet.sql.db_connector import DbConnector
+from hashtheplanet.sql.db_connector import DbConnector, Hash
+from hashtheplanet.sql.db_connector import Version as VersionTable
 
 # types
 FilePath = str
@@ -46,15 +46,6 @@ class GitResource():
         return Repo.clone_from(url, path, bare=True)
 
     @staticmethod
-    def get_hash(file_content) -> str or None:
-        """
-        This method computes the hash of the provided file and returns it.
-        """
-        if file_content is None:
-            return None
-        return hashlib.sha256(file_content).hexdigest()
-
-    @staticmethod
     def get_all_files_from_commit(commit: Commit) -> List[Tuple[FilePath, BlobHash]]:
         """
         This method retrieves all files with their blob hash in a commit.
@@ -67,8 +58,8 @@ class GitResource():
             file_list.append((blob.path, blob.hexsha))
         return file_list
 
+    @staticmethod
     def _hash_files(
-        self,
         files: List[GitFileMetadata],
         repo_dir_path: str
     ) -> List[FileMetadata]:
@@ -93,7 +84,7 @@ class GitResource():
                 )
                 if len(file_content) == 0:
                     continue
-                file_hash = self.get_hash(file_content)
+                file_hash = Hash.hash_bytes(file_content)
                 files_info.append((file_path, tag_name, file_hash))
             except (ValueError, subprocess.CalledProcessError) as exception:
                 logger.error(exception)
@@ -183,6 +174,29 @@ class GitResource():
                 self._database.insert_or_update_hash(session, file_hash, technology, [tag_name])
                 file_record[file_path] = (tag_name, file_hash)
 
+    @staticmethod
+    def _filter_stored_tags(stored_versions: List[VersionTable], found_tags: List[Tag]) -> List[Tag]:
+        """
+        This function will compare the stored tags (the tags in the htp database)
+        and the tags found in the git repository, then after it keeps only the non stored tags.
+        """
+        result = []
+
+        if len(stored_versions) == len(found_tags):
+            return []
+        stored_tags_name = [element.version for element in stored_versions]
+        for found_tag_idx, found_tag in enumerate(found_tags):
+            last_found_tag_idx = found_tag_idx - 1
+
+            if found_tag_idx >= len(stored_tags_name) or found_tag.name != stored_tags_name[found_tag_idx]:
+
+                # this verification permits to know if it's the first to be added,
+                # and if it's the case, then we add the one before to permits to make a diff
+                if last_found_tag_idx >= 0 and not result:
+                    result.append(found_tags[last_found_tag_idx])
+                result.append(found_tag)
+        return result
+
     def clone_checkout_and_compute_hashs(self, session_scope, url: str):
         """
         This method clones the repository from url, retrieves tags, compares each tags to retrieve only modified files,
@@ -202,8 +216,15 @@ class GitResource():
             logger.info("Retrieving tags ...")
             tags = repo.tags.copy()
 
-            logger.info("Retrieving files from the first tag ...")
-            files += self._get_tag_files(tags[0])
+            with session_scope() as session:
+                stored_tags = self._database.get_versions(session, technology)
+
+                if not stored_tags:
+                    logger.info("Retrieving files from the first tag ...")
+                    files += self._get_tag_files(tags[0])
+
+                logger.info("Filtering the tags ...")
+                tags = self._filter_stored_tags(stored_tags, tags)
 
             logger.info("Retrieving only modified files between the tags ...")
             files += self._get_diff_files(tags)

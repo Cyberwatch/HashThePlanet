@@ -28,7 +28,7 @@ def subprocess_mock(blobs: Dict[str, str]):
 
 def test_clone_repository():
     """
-    Unit tests for clone_repository method.
+    Should verify if the repository has been clone with the good arguments
     """
     git_resource = GitResource(None)
     repo_url = "http://foo.bar/foobar.git"
@@ -37,16 +37,6 @@ def test_clone_repository():
     with mock.patch("git.Repo.clone_from", return_value=None) as clone_from_mock:
         git_resource.clone_repository(repo_url, repo_path)
         clone_from_mock.assert_called_once_with(repo_url, repo_path, bare=True)
-
-def test_get_hash():
-    """
-    Unit tests for get_hash method.
-    """
-    git_resource = GitResource(None)
-    reference_str = "foobar".encode("utf-8")
-
-    assert git_resource.get_hash(reference_str) == hashlib.sha256(reference_str).hexdigest()
-    assert git_resource.get_hash(None) == None
 
 def test_get_all_files_from_commit():
     """
@@ -89,6 +79,7 @@ def test_hash_files():
     blobs = {
         "d159169d1050894d3ea3b98e1c965c4058208fe1": "license content".encode("utf-8"),
         "e42f952edc48e2c085c206166bf4f1ead4d4b058": "setup.cfg content".encode("utf-8"),
+        "empty": ""
     }
 
     git_files_metadata = [
@@ -120,6 +111,23 @@ def test_hash_files():
         assert files_metadata[1][0] == "setup.cfg"
         assert files_metadata[1][1] == "1.2.5"
         assert files_metadata[1][2] == hashlib.sha256(blobs.get("e42f952edc48e2c085c206166bf4f1ead4d4b058")).hexdigest()
+
+
+    with mock.patch("subprocess.check_output", subprocess_mock(blobs)) as sp_mock, \
+        mock.patch("os.getcwd", return_value="/foobar/") as getcwd_mock, \
+        mock.patch("os.chdir", return_value=None) as chdir_mock:
+        files_metadata = git_resource._hash_files([["empty", "1.2.1", "empty"]], "repo_dir_path")
+
+        assert sp_mock.call_count == 1
+        sp_mock.assert_called_with(['git', 'cat-file', '-p', 'empty'], shell=False)
+
+        getcwd_mock.assert_called_once()
+
+        assert chdir_mock.call_count == 2
+        chdir_mock.assert_called_with("/foobar/")
+
+        assert not len(files_metadata)
+
 
     with mock.patch.object(subprocess, "check_output", MagicMock(side_effect=ValueError("error"))) as mock_exec, \
         mock.patch("os.getcwd", return_value="/foobar/") as getcwd_mock, \
@@ -276,6 +284,98 @@ def test_save_hashes(dbsession):
         assert db_insert_h.called is True
         assert db_insert_h.call_count == 4
 
+def test_filter_stored_tags():
+    """
+    Should test the behavior of tags when some of them are already downloaded
+    """
+    class MockedVersionTable():
+        def __init__(self, version) -> None:
+            self.version = version
+
+    class MockedTag():
+        def __init__(self, name) -> None:
+            self.name = name
+
+    git_resource = GitResource(None)
+    stored_versions = [
+        MockedVersionTable("A"),
+        MockedVersionTable("B"),
+        MockedVersionTable("C"),
+        MockedVersionTable("D")
+    ]
+    repository_versions = [
+        MockedTag("A"),
+        MockedTag("B"),
+        MockedTag("C"),
+        MockedTag("D"),
+        MockedTag("E")
+    ]
+
+    result = git_resource._filter_stored_tags(stored_versions, repository_versions)
+
+    # In this situation, we have already downloaded the tags: A, B, C, D
+    # and in the repository there are the tags: A, B, C, D, E
+    # So we need to download only the tags D and E to make a diff a calculates the hash of the found files
+    assert [tag.name for tag in result] == ["D", "E"]
+
+    stored_versions = [
+        MockedVersionTable("A"),
+        MockedVersionTable("B"),
+        MockedVersionTable("C"),
+    ]
+    repository_versions = [
+        MockedTag("B"),
+        MockedTag("C"),
+        MockedTag("D"),
+        MockedTag("E")
+    ]
+
+    result = git_resource._filter_stored_tags(stored_versions, repository_versions)
+
+    # In this situation, we have already downloaded the tags: A, B, C
+    # and in the repository there are the tags: B, C, D, E
+    # We can see that we have the tag A that disapeared from the repository, so we need to recalculate the hash
+    # of the files from the the missing tag A to the last one
+    assert [tag.name for tag in result] == ["B", "C", "D", "E"]
+
+    stored_versions = [
+        MockedVersionTable("A"),
+        MockedVersionTable("B"),
+        MockedVersionTable("D"),
+        MockedVersionTable("E"),
+    ]
+    repository_versions = [
+        MockedTag("A"),
+        MockedTag("B"),
+        MockedTag("C"),
+        MockedTag("D"),
+        MockedTag("E")
+    ]
+
+    result = git_resource._filter_stored_tags(stored_versions, repository_versions)
+
+    # In this situation, we have already downloaded the tags: A, B, D, E
+    # and in the repository there are the tags: A, B, C, D, E
+    # We can see that in the repository a tag has been added between all of them
+    # So we need to download the tag before the added one and all next to create a diff
+    # and calculate the hash of the files
+    assert [tag.name for tag in result] == ["B", "C", "D", "E"]
+
+    stored_versions = [
+        MockedVersionTable("A"),
+    ]
+    repository_versions = [
+        MockedTag("A"),
+    ]
+
+    result = git_resource._filter_stored_tags(stored_versions, repository_versions)
+
+    # In this situation, we have already downloaded the tag: A
+    # and in the repository there is the tag: A
+    # We can see that we have already downloaded the tag, so we return an empty list
+    assert not [tag.name for tag in result]
+
+
 def test_clone_checkout_and_compute_hashs():
     """
     Unit tests for clone_checkout_and_compute_hashs method.
@@ -302,19 +402,27 @@ def test_clone_checkout_and_compute_hashs():
 
     with patch.object(GitResource, "clone_repository", return_value=repo_mock) as mock_clone_repo, \
         patch.object(GitResource, "_get_tag_files", return_value=[1]) as mock_get_tag_files, \
+        patch.object(GitResource, "_filter_stored_tags", return_value=tags) as mock_filter_stored_tags, \
         patch.object(GitResource, "_get_diff_files", return_value=[2]) as mock_get_diff_files, \
         patch.object(GitResource, "_hash_files", return_value="hashed files") as mock_hash_files, \
         patch.object(GitResource, "_save_hashes") as mock_save_hashes, \
+        patch.object(DbConnector, "get_versions", return_value=[]) as mock_get_versions, \
         patch("tempfile.TemporaryDirectory", MagicMock(side_effect=mock_tmp_dir)):
-        git_resource = GitResource(None)
 
-        git_resource.clone_checkout_and_compute_hashs(None, repo_url)
+        session = MagicMock()
+        git_resource = GitResource(DbConnector())
 
+        git_resource.clone_checkout_and_compute_hashs(session, repo_url)
+
+        # In this situation, we verify that by giving a good repo_url & a good tmp_dir_path
+        # we download the tags, calculate hash & store them in the database
         mock_clone_repo.assert_called_once_with(repo_url, tmp_dir_path)
+        mock_get_versions.assert_called_once()
         mock_get_tag_files.assert_called_once_with(tags[0])
+        mock_filter_stored_tags.assert_called_once_with([], tags)
         mock_get_diff_files.assert_called_once_with(tags)
         mock_hash_files.assert_called_once_with([1, 2], tmp_dir_path)
-        mock_save_hashes.assert_called_once_with(None, "hashed files", tags, "foobar")
+        mock_save_hashes.assert_called_once_with(session, "hashed files", tags, "foobar")
 
     with patch.object(
         GitResource,
@@ -323,12 +431,15 @@ def test_clone_checkout_and_compute_hashs():
     ) as mock_clone_repo, \
     patch("tempfile.TemporaryDirectory", MagicMock(side_effect=mock_tmp_dir)), \
     patch.object(GitResource, "_get_tag_files", return_value=[1]) as mock_get_tag_files, \
+    patch.object(GitResource, "_filter_stored_tags", return_value=[1]) as mock_filter_stored_tags, \
     patch.object(GitResource, "_get_diff_files", return_value=[2]) as mock_get_diff_files, \
     patch.object(GitResource, "_hash_files", return_value="hashed files") as mock_hash_files, \
-    patch.object(GitResource, "_save_hashes") as mock_save_hashes:
-        git_resource.clone_checkout_and_compute_hashs(None, repo_url)
+    patch.object(GitResource, "_save_hashes") as mock_save_hashes, \
+    patch.object(DbConnector, "get_versions") as mock_get_versions:
+        git_resource.clone_checkout_and_compute_hashs(MagicMock(), repo_url)
         mock_clone_repo.assert_called_once_with(repo_url, tmp_dir_path)
 
+        # In this situation, we verify that by giving a wrong repository we stop the function
         mock_get_tag_files.assert_not_called()
         mock_get_diff_files.assert_not_called()
         mock_hash_files.assert_not_called()
