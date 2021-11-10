@@ -77,14 +77,16 @@ def test_hash_files():
     Unit tests for _hash_files method.
     """
     blobs = {
+        "empty_blob": "".encode("utf-8"),
         "d159169d1050894d3ea3b98e1c965c4058208fe1": "license content".encode("utf-8"),
         "e42f952edc48e2c085c206166bf4f1ead4d4b058": "setup.cfg content".encode("utf-8"),
         "empty": ""
     }
 
     git_files_metadata = [
+        ["empty", "1.2.9", "empty_blob"],
         ["LICENSE", "1.2.3", "d159169d1050894d3ea3b98e1c965c4058208fe1"],
-        ["setup.cfg", "1.2.5", "e42f952edc48e2c085c206166bf4f1ead4d4b058"]
+        ["setup.cfg", "1.2.5", "e42f952edc48e2c085c206166bf4f1ead4d4b058"],
     ]
 
     git_resource = GitResource(None)
@@ -94,7 +96,7 @@ def test_hash_files():
         mock.patch("os.chdir", return_value=None) as chdir_mock:
         files_metadata = git_resource._hash_files(git_files_metadata, "repo_dir_path")
 
-        assert sp_mock.call_count == 2
+        assert sp_mock.call_count == 3
         sp_mock.assert_called_with(['git', 'cat-file', '-p', 'e42f952edc48e2c085c206166bf4f1ead4d4b058'], shell=False)
 
         getcwd_mock.assert_called_once()
@@ -140,7 +142,7 @@ def test_hash_files():
         chdir_mock.assert_called_with("/foobar/")
 
         mock_exec.assert_called()
-        assert mock_exec.call_count == 2
+        assert mock_exec.call_count == 3
 
 
 def test_get_changes_between_two_tags():
@@ -376,9 +378,9 @@ def test_filter_stored_tags():
     assert not [tag.name for tag in result]
 
 
-def test_clone_checkout_and_compute_hashs():
+def test_compute_hashes():
     """
-    Unit tests for clone_checkout_and_compute_hashs method.
+    Unit tests for compute_hashes.
     """
     class MockTag():
         def __init__(self, name: str):
@@ -412,7 +414,7 @@ def test_clone_checkout_and_compute_hashs():
         session = MagicMock()
         git_resource = GitResource(DbConnector())
 
-        git_resource.clone_checkout_and_compute_hashs(session, repo_url)
+        git_resource.compute_hashes(session, repo_url)
 
         # In this situation, we verify that by giving a good repo_url & a good tmp_dir_path
         # we download the tags, calculate hash & store them in the database
@@ -436,7 +438,7 @@ def test_clone_checkout_and_compute_hashs():
     patch.object(GitResource, "_hash_files", return_value="hashed files") as mock_hash_files, \
     patch.object(GitResource, "_save_hashes") as mock_save_hashes, \
     patch.object(DbConnector, "get_versions") as mock_get_versions:
-        git_resource.clone_checkout_and_compute_hashs(MagicMock(), repo_url)
+        git_resource.compute_hashes(MagicMock(), repo_url)
         mock_clone_repo.assert_called_once_with(repo_url, tmp_dir_path)
 
         # In this situation, we verify that by giving a wrong repository we stop the function

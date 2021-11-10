@@ -1,0 +1,14 @@
+{
+    "$schema": "./schema.json",
+    "git": {
+        "targets": [
+            "https://github.com/silexphp/Silex.git"
+        ]
+    },
+    "npm": {
+        "targets": [
+            "underscore",
+            "jquery"
+        ]
+    }
+}

@@ -3,3 +3,10 @@ GitPython>=3.1.18
 gitdb>=4.0.7
 smmap>=4.0.0
 SQLAlchemy>=1.4.22
+requests>=2.26.0
+charset_normalizer~=2.0.0
+idna>=2.5,<4
+urllib3>=1.21.1,<1.27
+certifi>=2017.4.17
+beautifulsoup4>=4.10.0
+soupsieve>1.2

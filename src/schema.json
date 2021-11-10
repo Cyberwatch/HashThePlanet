@@ -1,0 +1,31 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Technologies",
+    "type": "object",
+    "git": {
+        "type": "object",
+        "description": "Git crawler options.",
+        "properties": {
+            "targets": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "description": "A git url"
+                }
+            }
+        }
+    },
+    "npm": {
+        "type": "object",
+        "description": "npm crawler options.",
+        "properties": {
+            "targets": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "description": "A npm module name"
+                }
+            }
+        }
+    }
+}
