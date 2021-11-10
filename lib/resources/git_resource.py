@@ -103,14 +103,14 @@ class GitResource():
 
             logger.debug(f"Inserting tags for {technology} ...")
             with session_scope() as session:
-                self._database.insert_tags(session, technology, git_tags)
+                self._database.insert_versions(session, technology, git_tags)
 
             logger.debug(f"Retrieving tags from database for {technology}")
             with session_scope() as session:
-                tags = self._database.get_tags(session, technology)
+                tags = self._database.get_versions(session, technology)
                 logger.debug(f"Database tags : {tags}")
 
                 for tag in tags:
                     logger.debug(f"Checkout and compute hashs for tag {tag} ...")
                     self.checkout_and_compute(
-                        session, path, repository, tag.tag)
+                        session, path, repository, tag.version)

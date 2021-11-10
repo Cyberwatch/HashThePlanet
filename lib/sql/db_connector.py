@@ -15,19 +15,19 @@ from sqlalchemy.ext.declarative import declarative_base, declared_attr
 
 Base = declarative_base()
 
-class Tag(Base):
+class Version(Base):
     """
-    This class is a model for tag table
+    This class is a model for version table
     """
     @declared_attr
     def __tablename__(cls): # pylint: disable=no-self-argument
         return cls.__name__.lower()
 
     technology = Column(Text, nullable=False, primary_key=True)
-    tag = Column(Text, nullable=False, primary_key=True)
+    version = Column(Text, nullable=False, primary_key=True)
 
     def __repr__(self):
-        return f"Tag (technology={self.technology}, tag={self.tag})"
+        return f"Version (technology={self.technology}, version={self.version})"
 
 class File(Base):
     """
@@ -63,35 +63,35 @@ class DbConnector():
     This class implements method to connect to and request the database.
     """
     @staticmethod
-    def insert_tag(session, technology, tag):
+    def insert_version(session, technology, version):
         """
-        Insert a new tag related to technology in tag table if it does not exist yet.
+        Insert a new version related to technology in version table if it does not exist yet.
         """
-        stmt = select(Tag).filter_by(technology=technology, tag=str(tag))
+        stmt = select(Version).filter_by(technology=technology, version=str(version))
         entry = session.execute(stmt).scalar_one_or_none()
 
         if not entry:
-            new_tag = Tag(technology=technology, tag=str(tag))
-            session.add(new_tag)
-            logger.info(f"Entry {new_tag} added to tag database")
+            new_version = Version(technology=technology, version=str(version))
+            session.add(new_version)
+            logger.info(f"Entry {new_version} added to version database")
         else:
-            logger.debug(f"Entry {entry} already exists in tags database")
+            logger.debug(f"Entry {entry} already exists in versions database")
 
-    def insert_tags(self, session, technology, tags):
+    def insert_versions(self, session, technology, versions):
         """
-        Insert a list of tags related to technology.
+        Insert a list of versions related to technology.
         """
-        for _, tag in enumerate(tags):
-            self.insert_tag(session, technology, tag)
+        for _, version in enumerate(versions):
+            self.insert_version(session, technology, version)
 
     @staticmethod
-    def get_tags(session, technology):
+    def get_versions(session, technology):
         """
-        Returns all the tags related to technology.
+        Returns all the versions related to technology.
         """
-        stmt = select(Tag).filter_by(technology=technology)
-        tags = session.execute(stmt).scalars().all()
-        return tags
+        stmt = select(Version).filter_by(technology=technology)
+        versions = session.execute(stmt).scalars().all()
+        return versions
 
     @staticmethod
     def insert_file(session, technology, path):
