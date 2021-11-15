@@ -101,12 +101,13 @@ class DbConnector():
         else:
             logger.debug(f"Entry {entry} already exists in versions database")
 
-    def insert_versions(self, session, technology, versions):
+    @staticmethod
+    def insert_versions(session, technology, versions):
         """
         Insert a list of versions related to technology.
         """
         for _, version in enumerate(versions):
-            self.insert_version(session, technology, version)
+            DbConnector.insert_version(session, technology, version)
 
     @staticmethod
     def get_versions(session, technology):
