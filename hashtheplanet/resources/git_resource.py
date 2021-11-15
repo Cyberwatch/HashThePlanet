@@ -91,6 +91,8 @@ class GitResource():
                     ['git', 'cat-file', '-p', blob_hash],
                     shell=False,
                 )
+                if len(file_content) == 0:
+                    continue
                 file_hash = self.get_hash(file_content)
                 files_info.append((file_path, tag_name, file_hash))
             except (ValueError, subprocess.CalledProcessError) as exception:
