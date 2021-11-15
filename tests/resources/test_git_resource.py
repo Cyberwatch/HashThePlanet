@@ -2,6 +2,7 @@
 Unit tests for DbConnector class.
 """
 import hashlib
+import subprocess
 
 #standard imports
 from typing import Dict, List, Tuple
@@ -9,7 +10,7 @@ from unittest import mock
 from unittest.mock import MagicMock, patch
 
 # project imports
-from lib.resources.git_resource import BlobHash, FilePath, GitResource
+from hashtheplanet.resources.git_resource import BlobHash, FilePath, GitResource
 from sql.db_connector import DbConnector
 
 # third party imports
@@ -35,7 +36,7 @@ def test_clone_repository():
 
     with mock.patch("git.Repo.clone_from", return_value=None) as clone_from_mock:
         git_resource.clone_repository(repo_url, repo_path)
-        clone_from_mock.assert_called_with(repo_url, repo_path, bare=True)
+        clone_from_mock.assert_called_once_with(repo_url, repo_path, bare=True)
 
 def test_get_hash():
     """
@@ -98,13 +99,17 @@ def test_hash_files():
     git_resource = GitResource(None)
 
     with mock.patch("subprocess.check_output", subprocess_mock(blobs)) as sp_mock, \
+        mock.patch("os.getcwd", return_value="/foobar/") as getcwd_mock, \
         mock.patch("os.chdir", return_value=None) as chdir_mock:
         files_metadata = git_resource._hash_files(git_files_metadata, "repo_dir_path")
 
         assert sp_mock.call_count == 2
         sp_mock.assert_called_with(['git', 'cat-file', '-p', 'e42f952edc48e2c085c206166bf4f1ead4d4b058'], shell=False)
 
+        getcwd_mock.assert_called_once()
+
         assert chdir_mock.call_count == 2
+        chdir_mock.assert_called_with("/foobar/")
 
         assert len(files_metadata) == 2
 
@@ -116,9 +121,19 @@ def test_hash_files():
         assert files_metadata[1][1] == "1.2.5"
         assert files_metadata[1][2] == hashlib.sha256(blobs.get("e42f952edc48e2c085c206166bf4f1ead4d4b058")).hexdigest()
 
-        git_resource.get_hash = MagicMock()
-        git_resource.get_hash.side_effect = ValueError("error")
+    with mock.patch.object(subprocess, "check_output", MagicMock(side_effect=ValueError("error"))) as mock_exec, \
+        mock.patch("os.getcwd", return_value="/foobar/") as getcwd_mock, \
+        mock.patch("os.chdir", return_value=None) as chdir_mock:
         git_resource._hash_files(git_files_metadata, "repo_dir_path")
+
+        getcwd_mock.assert_called_once()
+
+        assert chdir_mock.call_count == 2
+        chdir_mock.assert_called_with("/foobar/")
+
+        mock_exec.assert_called()
+        assert mock_exec.call_count == 2
+
 
 def test_get_changes_between_two_tags():
     """
@@ -248,7 +263,18 @@ def test_save_hashes(dbsession):
         MockTag("1.2.4")
     ]
 
-    git_resource._save_hashes(session_scope, files_metadata, tags, "foobar")
+    with mock.patch.object(DbConnector, "insert_versions", MagicMock()) as db_insert_v, \
+        mock.patch.object(DbConnector, "insert_file", MagicMock()) as db_insert_f, \
+        mock.patch.object(DbConnector, "insert_or_update_hash", MagicMock()) as db_insert_h:
+        git_resource._save_hashes(session_scope, files_metadata, tags, "foobar")
+
+        db_insert_v.assert_called_once()
+
+        assert db_insert_f.called is True
+        assert db_insert_f.call_count == 3
+
+        assert db_insert_h.called is True
+        assert db_insert_h.call_count == 4
 
 def test_clone_checkout_and_compute_hashs():
     """
@@ -259,31 +285,51 @@ def test_clone_checkout_and_compute_hashs():
             self.name = name
 
     repo_url = "http://foo.bar/foobar.git"
-    repo_path = "/foobar/"
+    tmp_dir_path = "tmp_dir"
     tags = [MockTag("1.2.3"), MockTag("1.2.4")]
 
-    repo_mock = MagicMock()
-    repo_mock.tags = tags
+    repo_mock = MagicMock(tags=tags)
 
-    git_resource = GitResource(None)
+    class MockDir():
+        def __enter__(self):
+            return tmp_dir_path
 
-    git_resource.clone_repository = repo_mock
+        def __exit__(self, *args):
+            pass
 
-    git_resource._get_tag_files = MagicMock()
+    def mock_tmp_dir():
+        return MockDir()
 
-    git_resource._get_diff_files = MagicMock()
+    with patch.object(GitResource, "clone_repository", return_value=repo_mock) as mock_clone_repo, \
+        patch.object(GitResource, "_get_tag_files", return_value=[1]) as mock_get_tag_files, \
+        patch.object(GitResource, "_get_diff_files", return_value=[2]) as mock_get_diff_files, \
+        patch.object(GitResource, "_hash_files", return_value="hashed files") as mock_hash_files, \
+        patch.object(GitResource, "_save_hashes") as mock_save_hashes, \
+        patch("tempfile.TemporaryDirectory", MagicMock(side_effect=mock_tmp_dir)):
+        git_resource = GitResource(None)
 
-    git_resource._hash_files = MagicMock()
+        git_resource.clone_checkout_and_compute_hashs(None, repo_url)
 
-    git_resource._save_hashes = MagicMock()
+        mock_clone_repo.assert_called_once_with(repo_url, tmp_dir_path)
+        mock_get_tag_files.assert_called_once_with(tags[0])
+        mock_get_diff_files.assert_called_once_with(tags)
+        mock_hash_files.assert_called_once_with([1, 2], tmp_dir_path)
+        mock_save_hashes.assert_called_once_with(None, "hashed files", tags, "foobar")
 
-    git_resource.clone_checkout_and_compute_hashs(None, repo_url)
+    with patch.object(
+        GitResource,
+        "clone_repository",
+        MagicMock(side_effect=GitCommandError("error"))
+    ) as mock_clone_repo, \
+    patch("tempfile.TemporaryDirectory", MagicMock(side_effect=mock_tmp_dir)), \
+    patch.object(GitResource, "_get_tag_files", return_value=[1]) as mock_get_tag_files, \
+    patch.object(GitResource, "_get_diff_files", return_value=[2]) as mock_get_diff_files, \
+    patch.object(GitResource, "_hash_files", return_value="hashed files") as mock_hash_files, \
+    patch.object(GitResource, "_save_hashes") as mock_save_hashes:
+        git_resource.clone_checkout_and_compute_hashs(None, repo_url)
+        mock_clone_repo.assert_called_once_with(repo_url, tmp_dir_path)
 
-    repo_mock.call_count == 1
-    git_resource._get_tag_files.call_count == 1
-    git_resource._get_diff_files.call_count == 1
-    git_resource._hash_files.call_count == 1
-    git_resource._save_hashes.call_count == 1
-
-    git_resource.clone_repository.side_effect = GitCommandError("error")
-    git_resource.clone_checkout_and_compute_hashs(None, repo_url)
+        mock_get_tag_files.assert_not_called()
+        mock_get_diff_files.assert_not_called()
+        mock_hash_files.assert_not_called()
+        mock_save_hashes.assert_not_called()

@@ -20,7 +20,7 @@ jobs:
           pip install pylint pytest
       - name: Pylint
         run: |
-          pylint --rcfile=.pylintrc lib tests
+          pylint --rcfile=.pylintrc hashtheplanet tests
   code_test:
     name: Code Tests
     runs-on: ubuntu-latest
@@ -41,7 +41,7 @@ jobs:
           pip install pytest pytest-cov
       - name: Run tests
         run: |
-          pytest --cov=lib tests/
+          pytest --cov=hashtheplanet tests/
       - name: Run app
         run: |
           echo "https://github.com/jashkenas/underscore.git" > tech.csv

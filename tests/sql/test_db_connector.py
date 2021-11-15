@@ -3,11 +3,25 @@ Unit tests for DbConnector class.
 """
 #standard imports
 from json import JSONEncoder
+from typing import Dict
+from unittest import mock
+from unittest.mock import MagicMock, mock_open
 
 # third party imports
 
 # project imports
 from hashtheplanet.sql.db_connector import DbConnector, Version, File, Hash
+
+def get_mock_open(files: Dict[str, str]):
+    """
+    Utility function to mock the open builtin.
+    """
+    def open_mock(filename, *args, **kwargs): # pylint: disable=unused-argument
+        for expected_filename, content in files.items():
+            if filename == expected_filename:
+                return mock_open(read_data=content).return_value
+        raise FileNotFoundError('(mock) Unable to open {filename}')
+    return MagicMock(side_effect=open_mock)
 
 def test_insert_version(dbsession):
     """
@@ -170,3 +184,61 @@ def test_get_all_hashs(dbsession):
         assert retrieved_hashs[idx].hash == hashs[idx]
         assert retrieved_hashs[idx].technology == techno
         assert retrieved_hashs[idx].versions == JSONEncoder().encode({"versions": [versions[idx]]})
+
+def test_find_hash(dbsession):
+    """
+    Unit tests for find_hash method.
+    """
+    hashs = ["abcdef0123456789", "0123456789abcdef"]
+    techno = "jQuery"
+    versions = ["1.2.3", "1.3.4"]
+
+    dbsession.add(Hash(hash=hashs[0], technology=techno, versions=JSONEncoder() \
+                .encode({"versions": [versions[0]]})))
+    dbsession.add(Hash(hash=hashs[1], technology=techno, versions=JSONEncoder() \
+                .encode({"versions": [versions[1]]})))
+
+    result = DbConnector.find_hash(dbsession, "0123456789abcdef")
+
+    assert result is not None
+    assert result[0] == "jQuery"
+    assert result[1] == '{"versions": ["1.3.4"]}'
+
+def test_get_static_files(dbsession):
+    """
+    Unit tests for get_static_files method.
+    """
+    dbsession.add(File(technology="Wordpress", path="license.txt"))
+    dbsession.add(File(technology="Wordpress", path="README.md"))
+    dbsession.add(File(technology="jQuery", path="index.html"))
+    dbsession.add(File(technology="jQuery", path="script.js"))
+
+    static_files = DbConnector.get_static_files(dbsession)
+
+    assert len(static_files) == 3
+    assert static_files[0] == "license.txt"
+    assert static_files[1] == "README.md"
+    assert static_files[2] == "index.html"
+
+def test_hash_file():
+    """
+    Unit tests for hash_file method.
+    """
+    test_hash = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+    files = {
+        "test.txt": "test".encode("utf-8")
+    }
+
+    with mock.patch("builtins.open", get_mock_open(files)):
+        assert Hash.hash_file("test.txt") == test_hash
+    with mock.patch("builtins.open", MagicMock(side_effect=OSError(""))):
+        assert Hash.hash_file("error.txt") is None
+
+def test_hash_bytes():
+    """
+    Unit tests for hash_bytes method.
+    """
+    test_hash = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+    test_str = "test"
+
+    assert Hash.hash_bytes(test_str.encode("utf-8")) == test_hash
