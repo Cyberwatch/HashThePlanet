@@ -42,3 +42,7 @@ jobs:
       - name: Run tests
         run: |
           pytest --cov=lib tests/
+      - name: Run app
+        run: |
+          echo "https://github.com/jashkenas/underscore.git" > tech.csv
+          hashtheplanet --input ./tech.csv --output output.db
