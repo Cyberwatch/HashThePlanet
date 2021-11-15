@@ -111,17 +111,17 @@ class HashThePlanet():
         file_hash = Hash.hash_file(file_path)
 
         if file_hash is None:
-            return []
+            return (None, None)
         return self.analyze_hash(file_hash)
 
     def analyze_str(self, str_data: str) -> Tuple[str, dict]:
         """
         Analyze a string and returns its technology and its versions
         """
-        file_hash = Hash.hash_bytes(str_data)
+        if str_data is None:
+            return (None, None)
 
-        if file_hash is None:
-            return []
+        file_hash = Hash.hash_bytes(str_data.encode("utf-8"))
         return self.analyze_hash(file_hash)
 
     def analyze_hash(self, file_hash: str) -> Tuple[str, dict]:
@@ -129,7 +129,7 @@ class HashThePlanet():
         Analyze a hash and returns its technology and its versions
         """
         if file_hash is None:
-            return []
+            return (None, None)
         with self.session_scope() as session:
             return self._database.find_hash(session, file_hash)
 
@@ -205,6 +205,8 @@ def main():
 
     if args.file is not None:
         readable_hash = Hash.hash_file(args.file)
+        if readable_hash is None:
+            return
         hashtheplanet.find_hash(readable_hash)
         return
     if args.hash is not None:

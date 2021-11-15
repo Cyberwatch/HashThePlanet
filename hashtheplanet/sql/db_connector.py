@@ -72,12 +72,7 @@ class Hash(Base):
         """
         This method computes the SHA256 hash of the provided data and returns it.
         """
-        try:
-            readable_hash = hashlib.sha256(data).hexdigest()
-            return readable_hash
-        except OSError as error:
-            logger.error(f"Error with file: {error}")
-        return None
+        return hashlib.sha256(data).hexdigest()
 
     def __repr__(self):
         return f"Hash (hash={self.hash}, technology={self.technology}, versions={self.versions})"
