@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 # project imports
 from hashtheplanet.resources.git_resource import BlobHash, FilePath, GitResource
-from sql.db_connector import DbConnector
+from hashtheplanet.sql.db_connector import DbConnector
 
 # third party imports
 from git.exc import GitCommandError

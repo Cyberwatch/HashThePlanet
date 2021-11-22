@@ -3,9 +3,9 @@ from typing import Dict
 from unittest import mock
 from unittest.mock import MagicMock, mock_open, patch
 from loguru import logger
-from resources.git_resource import GitResource
+from hashtheplanet.resources.git_resource import GitResource
 
-from sql.db_connector import DbConnector, Hash
+from hashtheplanet.sql.db_connector import DbConnector, Hash
 from sqlalchemy.engine.base import Engine
 from sqlalchemy.orm.session import Session
 
