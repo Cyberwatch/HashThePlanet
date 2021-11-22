@@ -17,7 +17,7 @@ from git.refs.tag import Tag
 from loguru import logger
 
 # project imports
-from sql.db_connector import DbConnector
+from hashtheplanet.sql.db_connector import DbConnector
 
 # types
 FilePath = str

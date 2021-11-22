@@ -15,10 +15,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 # project imports
-from resources.git_resource import GitResource
-from sql.db_connector import Base, DbConnector, Hash
+from hashtheplanet.resources.git_resource import GitResource
+from hashtheplanet.sql.db_connector import Base, DbConnector, Hash
 
-logger.remove()
 
 HASHTHEPLANET_VERSION = "HashThePlanet 0.0.0"
 
@@ -146,7 +145,7 @@ def main():
     The main function, which is the entry point of the program.
     It stores arguments provided by the user and launches hash computing.
     """
-
+    logger.remove()
     parser = argparse.ArgumentParser(description="HashThePlanet-0.0.0")
 
     parser.add_argument(
