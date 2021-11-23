@@ -259,6 +259,18 @@ def test_get_static_files():
     static_files = htp.get_static_files()
     assert len(static_files) == 2
 
+def test_get_versions():
+    class MockDatabase():
+        def get_versions(self, session_scope, technology):
+            return ["1.2.3", "1.2.4"]
+    htp = HashThePlanet("output.txt", "foobar.txt")
+
+    htp.session_scope = MagicMock()
+    htp._database = MockDatabase()
+
+    static_files = htp.get_versions("jquery")
+    assert len(static_files) == 2
+
 def test_main():
     def return_magic_mock(*args):
         return MagicMock()

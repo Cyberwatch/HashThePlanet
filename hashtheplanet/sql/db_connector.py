@@ -10,6 +10,7 @@ from typing import List
 from loguru import logger
 from sqlalchemy import JSON, Column, Text, select, update
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
+from sqlalchemy.sql.sqltypes import Integer
 
 Base = declarative_base()
 
@@ -21,6 +22,7 @@ class Version(Base):
     def __tablename__(cls): # pylint: disable=no-self-argument
         return cls.__name__.lower()
 
+    rowid = Column(Integer)
     technology = Column(Text, nullable=False, primary_key=True)
     version = Column(Text, nullable=False, primary_key=True)
 
@@ -109,7 +111,7 @@ class DbConnector():
         """
         Returns all the versions related to technology.
         """
-        stmt = select(Version).filter_by(technology=technology)
+        stmt = select(Version.version).filter_by(technology=technology).order_by(Version.rowid.asc())
         versions = session.execute(stmt).scalars().all()
         return versions
 
