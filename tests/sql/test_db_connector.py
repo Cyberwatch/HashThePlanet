@@ -85,8 +85,7 @@ def test_get_versions(dbsession):
     retrieved_versions = DbConnector.get_versions(dbsession, techno)
     assert len(retrieved_versions) == 2
     for idx, _ in enumerate(retrieved_versions):
-        assert retrieved_versions[idx].technology == techno
-        assert retrieved_versions[idx].version == versions[idx]
+        assert retrieved_versions[idx] == versions[idx]
 
 
 def test_insert_file(dbsession):

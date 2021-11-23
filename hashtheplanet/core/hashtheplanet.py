@@ -139,6 +139,12 @@ class HashThePlanet():
         with self.session_scope() as session:
             return self._database.get_static_files(session)
 
+    def get_versions(self, technology: str) -> List[str]:
+        """
+        Returns all stored versions for a technology
+        """
+        with self.session_scope() as session:
+            return self._database.get_versions(session, technology)
 
 def main():
     """
