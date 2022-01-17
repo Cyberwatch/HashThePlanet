@@ -2,7 +2,11 @@
     "$schema": "./schema.json",
     "git": {
         "targets": [
-            "https://github.com/silexphp/Silex.git"
+            "https://github.com/silexphp/Silex.git",
+            "https://github.com/WordPress/WordPress.git",
+            "https://github.com/drupal/drupal.git",
+            "https://github.com/magento/magento2.git",
+            "https://github.com/joomla/joomla-cms.git"
         ]
     },
     "npm": {
