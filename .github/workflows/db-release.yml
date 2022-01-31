@@ -9,7 +9,7 @@ on:
     branches:
       - main
     paths:
-      - 'src/tech_list.csv'
+      - 'src/tech_list.json'
 
 jobs:
   db-release:
@@ -48,7 +48,7 @@ jobs:
 
       - name: "Update the database"
         run: |
-          hashtheplanet --input src/tech_list.csv --output dist/hashtheplanet.db
+          hashtheplanet --input src/tech_list.json --output dist/hashtheplanet.db
 
       - name: "Publish the daily release with the tag: ${{ steps.date.outputs.date }}"
         uses: "marvinpinto/action-automatic-releases@latest"
