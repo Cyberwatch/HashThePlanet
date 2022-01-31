@@ -2,6 +2,7 @@
 Unit tests for Config class.
 """
 #standard imports
+from json import JSONDecodeError
 from typing import Dict
 from unittest import mock
 from unittest.mock import MagicMock, mock_open, patch
@@ -36,18 +37,22 @@ def test_parse():
     config._config = {}
 
     with mock.patch("builtins.open", get_mock_open(files)) as mock_open:
-        config.parse("wrongly_formatted.json")
-        assert mock_open.called is True
-        assert mock_open.call_count == 1
-        assert len(config._config) == 0
+        try:
+            config.parse("wrongly_formatted.json")
+        except JSONDecodeError:
+            assert mock_open.called is True
+            assert mock_open.call_count == 1
+            assert len(config._config) == 0
 
     config._config = {}
 
     with mock.patch("builtins.open", MagicMock(side_effect=OSError("error"))) as mock_open:
-        config.parse("tech_list.json")
-        assert mock_open.called is True
-        assert mock_open.call_count == 1
-        assert len(config._config) == 0
+        try:
+            config.parse("tech_list.json")
+        except OSError:
+            assert mock_open.called is True
+            assert mock_open.call_count == 1
+            assert len(config._config) == 0
 
 def test_get_targets():
     """

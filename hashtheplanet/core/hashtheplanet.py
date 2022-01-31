@@ -3,6 +3,7 @@ The main module for HashThePlanet
 """
 # standard imports
 import argparse
+from json import JSONDecodeError
 import os
 import sys
 from contextlib import contextmanager
@@ -96,8 +97,9 @@ class HashThePlanet():
 
             logger.info("Computing done")
 
-        except OSError as error:
+        except (OSError, JSONDecodeError) as error:
             logger.error(f"Error: {error}")
+            sys.exit(1)
 
     def analyze_file(self, file_path: str) -> Tuple[str, dict]:
         """

@@ -2,9 +2,7 @@
 This module handles the config file.
 """
 import json
-from json.decoder import JSONDecodeError
 from typing import Dict, List
-from loguru import logger
 
 from hashtheplanet.resources.git_resource import GitResource
 from hashtheplanet.resources.npm_resource import NpmResource
@@ -24,12 +22,8 @@ class Config():
         """
         This method parses the config file and loads it in the class.
         """
-        try:
-            with open(config_path, "r", encoding="utf-8") as file_fp:
-                self._config = json.load(file_fp)
-
-        except (OSError, JSONDecodeError) as exception:
-            logger.error(exception)
+        with open(config_path, "r", encoding="utf-8") as file_fp:
+            self._config = json.load(file_fp)
 
     def get_targets(self, resource_name: str) -> List[str]:
         """
