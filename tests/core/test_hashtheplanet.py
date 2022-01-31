@@ -1,4 +1,5 @@
 
+import sys
 from typing import Dict
 from unittest import mock
 from unittest.mock import MagicMock, mock_open, patch
@@ -118,7 +119,7 @@ def test_find_hash():
         htp.find_hash("hash")
         find_hash_mock.assert_called_once()
 
-def test_compute_hashs():
+def test_compute_hashes():
     files = {
         "foobar.txt": """
         {
@@ -149,17 +150,27 @@ def test_compute_hashs():
         mock_compute_hashes.reset_mock()
 
         htp = HashThePlanet("output.txt", "empty.txt")
-        htp.compute_hashs()
-
-        mock_open.assert_called_once_with("empty.txt", "r", encoding="utf-8")
-        mock_compute_hashes.assert_not_called()
+        try:
+            htp.compute_hashs()
+        except SystemExit as e:
+            assert e.code == 1
+            mock_open.assert_called_once_with("empty.txt", "r", encoding="utf-8")
+            mock_compute_hashes.assert_not_called()
+        else:
+            assert False
 
     with mock.patch.object(Config, "parse", MagicMock(side_effect=OSError("error"))) as mock_open, \
         mock.patch.object(logger, "error") as mock_error_logger:
-        htp = HashThePlanet("output.txt", "foobar.txt")
-        htp.compute_hashs()
 
-        mock_error_logger.assert_called_once()
+        htp = HashThePlanet("output.txt", "foobar.txt")
+
+        try:
+            htp.compute_hashs()
+        except SystemExit as e:
+            assert e.code == 1
+            mock_error_logger.assert_called_once()
+        else:
+            assert False
 
 def test_analyze_file():
     foobar_hash = "27dd147c7347026fe21b432a2297303bb9990462d886e55facda103598c687fc"

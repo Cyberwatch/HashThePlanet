@@ -290,9 +290,6 @@ def test_filter_stored_tags():
     """
     Should test the behavior of tags when some of them are already downloaded
     """
-    class MockedVersionTable():
-        def __init__(self, version) -> None:
-            self.version = version
 
     class MockedTag():
         def __init__(self, name) -> None:
@@ -300,10 +297,10 @@ def test_filter_stored_tags():
 
     git_resource = GitResource(None)
     stored_versions = [
-        MockedVersionTable("A"),
-        MockedVersionTable("B"),
-        MockedVersionTable("C"),
-        MockedVersionTable("D")
+        "A",
+        "B",
+        "C",
+        "D"
     ]
     repository_versions = [
         MockedTag("A"),
@@ -321,9 +318,9 @@ def test_filter_stored_tags():
     assert [tag.name for tag in result] == ["D", "E"]
 
     stored_versions = [
-        MockedVersionTable("A"),
-        MockedVersionTable("B"),
-        MockedVersionTable("C"),
+        "A",
+        "B",
+        "C",
     ]
     repository_versions = [
         MockedTag("B"),
@@ -341,10 +338,10 @@ def test_filter_stored_tags():
     assert [tag.name for tag in result] == ["B", "C", "D", "E"]
 
     stored_versions = [
-        MockedVersionTable("A"),
-        MockedVersionTable("B"),
-        MockedVersionTable("D"),
-        MockedVersionTable("E"),
+        "A",
+        "B",
+        "D",
+        "E",
     ]
     repository_versions = [
         MockedTag("A"),
@@ -364,7 +361,7 @@ def test_filter_stored_tags():
     assert [tag.name for tag in result] == ["B", "C", "D", "E"]
 
     stored_versions = [
-        MockedVersionTable("A"),
+        "A",
     ]
     repository_versions = [
         MockedTag("A"),

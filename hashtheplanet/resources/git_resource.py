@@ -180,11 +180,10 @@ class GitResource(Resource):
 
         if len(stored_versions) == len(found_tags):
             return []
-        stored_tags_name = [element.version for element in stored_versions]
         for found_tag_idx, found_tag in enumerate(found_tags):
             last_found_tag_idx = found_tag_idx - 1
 
-            if found_tag_idx >= len(stored_tags_name) or found_tag.name != stored_tags_name[found_tag_idx]:
+            if found_tag_idx >= len(stored_versions) or found_tag.name != stored_versions[found_tag_idx]:
 
                 # this verification permits to know if it's the first to be added,
                 # and if it's the case, then we add the one before to permits to make a diff

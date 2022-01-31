@@ -44,5 +44,5 @@ jobs:
           pytest --cov=hashtheplanet tests/
       - name: Run app
         run: |
-          echo "https://github.com/jashkenas/underscore.git" > tech.csv
-          hashtheplanet --input ./tech.csv --output output.db
+          echo '{"git":{"targets":["https://github.com/jashkenas/underscore.git"]},"npm":{"targets":["underscore"]}}' > tech.json
+          hashtheplanet --input ./tech.json --output output.db
