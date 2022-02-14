@@ -5,6 +5,12 @@ on:
   schedule:
   - cron: "0 0 * * 0"
   workflow_dispatch:
+    inputs:
+      overwrite:
+        description: Create a new release without using the database from the last one
+        type: boolean
+        required: true
+        default: "false"
   push:
     branches:
       - main
@@ -36,6 +42,7 @@ jobs:
           pip install pylint pytest
 
       - name: "Download the latest published database"
+        if: ${{ github.event.inputs.overwrite == 'false' }}
         uses: "robinraju/release-downloader@v1.2"
         continue-on-error: true
         with:
