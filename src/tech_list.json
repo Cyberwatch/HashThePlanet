@@ -7,12 +7,14 @@
             "https://github.com/drupal/drupal.git",
             "https://github.com/magento/magento2.git",
             "https://github.com/joomla/joomla-cms.git"
-        ]
+        ],
+        "exclude_regex": "\\.php|tests\\/|test\\/|\\.gitignore|\\.package|\\.idea|qunit|\\.editorconfig|vendor\\/|\\.vue|\\.scss|\\.less"
     },
     "npm": {
         "targets": [
             "underscore",
             "jquery"
-        ]
+        ],
+        "exclude_regex": "tests\\/|test\\/|\\.jshintrc|\\.npmignore|\\.bowerrc|\\.jscsrc|\\.bower.json|\\.eslintrc.json|\\.jshintignore|\\.eslintrc|\\.scss|\\.less|\\.vue|\\.scss|\\.less|\\.idea"
     }
 }

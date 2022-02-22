@@ -72,7 +72,7 @@ def test_save_tar_to_disk():
 
 def test_extract_hashes_from_tar():
     path = "./test.tgz"
-    members = ["a", "b", None, "c"]
+    members = ["a", "b.txt", None, "c"]
 
     class MockedTarMember():
         def __init__(self, member) -> None:
@@ -105,10 +105,11 @@ def test_extract_hashes_from_tar():
         assert file_path == path
         return MockedTarFile()
 
+    # when there are no excluded files
     with mock.patch("tarfile.open", MagicMock(side_effect=mocked_open_tar)) as mock_open_tar:
         npm_resource = NpmResource(MagicMock())
 
-        files = npm_resource.extract_hashes_from_tar(path)
+        files = npm_resource.extract_hashes_from_tar(path, None)
         assert mock_open_tar.called is True
         assert mock_open_tar.call_count == 1
 
@@ -117,12 +118,27 @@ def test_extract_hashes_from_tar():
         assert files[0][0] == "a"
         assert files[0][1] == hashlib.sha256("a".encode("utf-8")).hexdigest()
 
-        assert files[1][0] == "b"
-        assert files[1][1] == hashlib.sha256("b".encode("utf-8")).hexdigest()
+        assert files[1][0] == "b.txt"
+        assert files[1][1] == hashlib.sha256("b.txt".encode("utf-8")).hexdigest()
 
         assert files[2][0] == "c"
         assert files[2][1] == hashlib.sha256("c".encode("utf-8")).hexdigest()
 
+    # When the *.txt files are excluded
+    with mock.patch("tarfile.open", MagicMock(side_effect=mocked_open_tar)) as mock_open_tar:
+        npm_resource = NpmResource(MagicMock())
+
+        files = npm_resource.extract_hashes_from_tar(path, "\\.txt$")
+        assert mock_open_tar.called is True
+        assert mock_open_tar.call_count == 1
+
+        assert len(files) == 2
+
+        assert files[0][0] == "a"
+        assert files[0][1] == hashlib.sha256("a".encode("utf-8")).hexdigest()
+
+        assert files[1][0] == "c"
+        assert files[1][1] == hashlib.sha256("c".encode("utf-8")).hexdigest()
 
 def test_save_hashes():
     npm_module_name = "test"
@@ -174,7 +190,7 @@ def test_compute_hashes():
     def mock_tmp_dir():
         return MockDir()
 
-    def mock_extract_hashes_from_tar(file_path: str):
+    def mock_extract_hashes_from_tar(file_path: str, exclude_regex: str):
         if file_path == f"{tmp_dir_path}/{target}-1.2.3.tgz":
             return files_info["1.2.3"]
         elif file_path == f"{tmp_dir_path}/{target}-1.2.4.tgz":
@@ -190,7 +206,7 @@ def test_compute_hashes():
         mock.patch("tempfile.TemporaryDirectory", MagicMock(side_effect=mock_tmp_dir)):
         npm_resource = NpmResource(MagicMock())
         session = MagicMock()
-        npm_resource.compute_hashes(session, target)
+        npm_resource.compute_hashes(session, target, None)
 
         mock_versions.assert_called_once()
         mock_tar.call_count == 2

@@ -6,7 +6,7 @@ import os
 import subprocess
 import tempfile
 from stat import S_ISDIR, S_ISREG
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 # third party imports
 from git import GitCommandError, Repo
@@ -54,10 +54,11 @@ class GitResource(Resource):
             file_list.append((blob.path, blob.hexsha))
         return file_list
 
-    @staticmethod
     def _hash_files(
+        self,
         files: List[GitFileMetadata],
-        repo_dir_path: str
+        repo_dir_path: str,
+        exclude_regex: Optional[str]
     ) -> List[FileMetadata]:
         """
         This method calculates the SHA256 hashes of input files.
@@ -69,6 +70,8 @@ class GitResource(Resource):
         os.chdir(repo_dir_path)
 
         for (file_path, tag_name, blob_hash) in files:
+            if not self.should_save(exclude_regex, file_path):
+                continue
             try:
                 # We need to use a subprocess and not the GitPython library
                 # because when we execute "git cat-file -p [blob]" with it, it always removes the \n from the last line.
@@ -192,7 +195,7 @@ class GitResource(Resource):
                 result.append(found_tag)
         return result
 
-    def compute_hashes(self, session_scope, target: str):
+    def compute_hashes(self, session_scope, target: str, exclude_regex: Optional[str]):
         """
         This method clones the repository from url, retrieves tags, compares each tags to retrieve only modified files,
         computes their hashes and then stores the tags & files information in the database.
@@ -203,6 +206,7 @@ class GitResource(Resource):
 
         with tempfile.TemporaryDirectory() as tmp_dir_name:
             try:
+                logger.info(f"Cloning {target}")
                 repo = self.clone_repository(target, tmp_dir_name)
             except GitCommandError as error:
                 logger.warning(f"Error while cloning repository on {target}: {error}")
@@ -225,7 +229,7 @@ class GitResource(Resource):
             files += self._get_diff_files(tags)
 
             logger.info("Generating hashes ...")
-            files_info = self._hash_files(files, tmp_dir_name)
+            files_info = self._hash_files(files, tmp_dir_name, exclude_regex)
 
         logger.info("Saving hashes ...")
         self._save_hashes(session_scope, files_info, tags, technology)

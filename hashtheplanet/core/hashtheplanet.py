@@ -15,7 +15,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 # project imports
-from hashtheplanet.config.config import Config
+from hashtheplanet.config.config import Config, ConfigField
 from hashtheplanet.executor.executor import Executor
 from hashtheplanet.sql.db_connector import Base, DbConnector, Hash
 
@@ -90,10 +90,11 @@ class HashThePlanet():
             self._config.parse(self._input_file)
 
             for resource_name in self._config.get_used_resources():
-                targets = self._config.get_targets(resource_name)
+                targets = self._config.get(resource_name, ConfigField.TARGETS) or []
+                exclude_regex = self._config.get(resource_name, ConfigField.EXCLUDE_REGEX)
 
                 for target in targets:
-                    self._executor.execute(resource_name, target)
+                    self._executor.execute(resource_name, target, exclude_regex)
 
             logger.info("Computing done")
 

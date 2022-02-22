@@ -91,10 +91,11 @@ def test_hash_files():
 
     git_resource = GitResource(None)
 
+    # when there are no excluded files
     with mock.patch("subprocess.check_output", subprocess_mock(blobs)) as sp_mock, \
         mock.patch("os.getcwd", return_value="/foobar/") as getcwd_mock, \
         mock.patch("os.chdir", return_value=None) as chdir_mock:
-        files_metadata = git_resource._hash_files(git_files_metadata, "repo_dir_path")
+        files_metadata = git_resource._hash_files(git_files_metadata, "repo_dir_path", None)
 
         assert sp_mock.call_count == 3
         sp_mock.assert_called_with(['git', 'cat-file', '-p', 'e42f952edc48e2c085c206166bf4f1ead4d4b058'], shell=False)
@@ -114,11 +115,31 @@ def test_hash_files():
         assert files_metadata[1][1] == "1.2.5"
         assert files_metadata[1][2] == hashlib.sha256(blobs.get("e42f952edc48e2c085c206166bf4f1ead4d4b058")).hexdigest()
 
+    git_resource = GitResource(None)
+
+    # When the *.cfg files are excluded
+    with mock.patch("subprocess.check_output", subprocess_mock(blobs)) as sp_mock, \
+        mock.patch("os.getcwd", return_value="/foobar/") as getcwd_mock, \
+        mock.patch("os.chdir", return_value=None) as chdir_mock:
+        files_metadata = git_resource._hash_files(git_files_metadata, "repo_dir_path", "\\.cfg$")
+
+        assert sp_mock.call_count == 2
+
+        getcwd_mock.assert_called_once()
+
+        assert chdir_mock.call_count == 2
+        chdir_mock.assert_called_with("/foobar/")
+
+        assert len(files_metadata) == 1
+
+        assert files_metadata[0][0] == "LICENSE"
+        assert files_metadata[0][1] == "1.2.3"
+        assert files_metadata[0][2] == hashlib.sha256(blobs.get("d159169d1050894d3ea3b98e1c965c4058208fe1")).hexdigest()
 
     with mock.patch("subprocess.check_output", subprocess_mock(blobs)) as sp_mock, \
         mock.patch("os.getcwd", return_value="/foobar/") as getcwd_mock, \
         mock.patch("os.chdir", return_value=None) as chdir_mock:
-        files_metadata = git_resource._hash_files([["empty", "1.2.1", "empty"]], "repo_dir_path")
+        files_metadata = git_resource._hash_files([["empty", "1.2.1", "empty"]], "repo_dir_path", None)
 
         assert sp_mock.call_count == 1
         sp_mock.assert_called_with(['git', 'cat-file', '-p', 'empty'], shell=False)
@@ -134,7 +155,7 @@ def test_hash_files():
     with mock.patch.object(subprocess, "check_output", MagicMock(side_effect=ValueError("error"))) as mock_exec, \
         mock.patch("os.getcwd", return_value="/foobar/") as getcwd_mock, \
         mock.patch("os.chdir", return_value=None) as chdir_mock:
-        git_resource._hash_files(git_files_metadata, "repo_dir_path")
+        git_resource._hash_files(git_files_metadata, "repo_dir_path", None)
 
         getcwd_mock.assert_called_once()
 
@@ -411,7 +432,7 @@ def test_compute_hashes():
         session = MagicMock()
         git_resource = GitResource(DbConnector())
 
-        git_resource.compute_hashes(session, repo_url)
+        git_resource.compute_hashes(session, repo_url, None)
 
         # In this situation, we verify that by giving a good repo_url & a good tmp_dir_path
         # we download the tags, calculate hash & store them in the database
@@ -420,7 +441,7 @@ def test_compute_hashes():
         mock_get_tag_files.assert_called_once_with(tags[0])
         mock_filter_stored_tags.assert_called_once_with([], tags)
         mock_get_diff_files.assert_called_once_with(tags)
-        mock_hash_files.assert_called_once_with([1, 2], tmp_dir_path)
+        mock_hash_files.assert_called_once_with([1, 2], tmp_dir_path, None)
         mock_save_hashes.assert_called_once_with(session, "hashed files", tags, "foobar")
 
     with patch.object(
@@ -435,7 +456,7 @@ def test_compute_hashes():
     patch.object(GitResource, "_hash_files", return_value="hashed files") as mock_hash_files, \
     patch.object(GitResource, "_save_hashes") as mock_save_hashes, \
     patch.object(DbConnector, "get_versions") as mock_get_versions:
-        git_resource.compute_hashes(MagicMock(), repo_url)
+        git_resource.compute_hashes(MagicMock(), repo_url, None)
         mock_clone_repo.assert_called_once_with(repo_url, tmp_dir_path)
 
         # In this situation, we verify that by giving a wrong repository we stop the function
