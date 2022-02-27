@@ -8,7 +8,7 @@ from unittest import mock
 from unittest.mock import MagicMock, mock_open, patch
 
 # project imports
-from hashtheplanet.config.config import Config
+from hashtheplanet.config.config import Config, ConfigField
 
 def get_mock_open(files: Dict[str, str]):
     def open_mock(filename, *args, **kwargs):
@@ -61,9 +61,9 @@ def test_get_targets():
     config = Config()
 
     with patch.dict(config._config, {"git": {"targets": ["target1", "target2"]}}):
-        assert len(config.get_targets("git")) == 2
+        assert len(config.get("git", ConfigField.TARGETS)) == 2
 
-        assert len(config.get_targets("npm")) == 0
+        assert not config.get("npm", ConfigField.TARGETS)
 
 def test_get_used_resources():
     config = Config()

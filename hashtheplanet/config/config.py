@@ -1,11 +1,19 @@
 """
 This module handles the config file.
 """
+from enum import Enum
 import json
 from typing import Dict, List
 
 from hashtheplanet.resources.git_resource import GitResource
 from hashtheplanet.resources.npm_resource import NpmResource
+
+class ConfigField(Enum):
+    """
+    This enum contains every field that can be found in the config file
+    """
+    TARGETS = "targets"
+    EXCLUDE_REGEX = "exclude_regex"
 
 class Config():
     """
@@ -25,15 +33,15 @@ class Config():
         with open(config_path, "r", encoding="utf-8") as file_fp:
             self._config = json.load(file_fp)
 
-    def get_targets(self, resource_name: str) -> List[str]:
+    def get(self, resource_name: str, config_field: ConfigField):
         """
-        This methods returns the targets used by the given resource.
+        This methods returns a field content used by the given resource.
         """
-        module_info: Dict = self._config.get(resource_name)
+        field_content: Dict = self._config.get(resource_name)
 
-        if module_info is None:
-            return []
-        return module_info.get("targets")
+        if not config_field or not field_content:
+            return None
+        return field_content.get(config_field.value)
 
     def get_used_resources(self) -> List[str]:
         """

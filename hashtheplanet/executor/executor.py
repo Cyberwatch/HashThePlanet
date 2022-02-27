@@ -2,6 +2,7 @@
 This module handles the resource executions.
 """
 from importlib import import_module
+from typing import Optional
 
 from loguru import logger
 
@@ -17,7 +18,7 @@ class Executor(): # pylint: disable=too-few-public-methods
         self._database = database
         self._session_scope = session_scope
 
-    def execute(self, resource_name: str, target: str):
+    def execute(self, resource_name: str, target: str, exclude_regex: Optional[str] = None):
         """
         This method executes a resource to compute hashes.
         """
@@ -31,4 +32,4 @@ class Executor(): # pylint: disable=too-few-public-methods
             return
 
         resource_instance: Resource = getattr(module, resource_class_name)(self._database)
-        resource_instance.compute_hashes(self._session_scope, target)
+        resource_instance.compute_hashes(self._session_scope, target, exclude_regex)

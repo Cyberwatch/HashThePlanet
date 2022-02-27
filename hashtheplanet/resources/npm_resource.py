@@ -4,7 +4,7 @@ This module handles npm resources to generate hashes.
 #standard imports
 import tarfile
 import tempfile
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 import requests
 
 # third party imports
@@ -61,8 +61,7 @@ class NpmResource(Resource):
         with open(file_path, 'wb') as file_fd:
             file_fd.write(request.content)
 
-    @staticmethod
-    def extract_hashes_from_tar(file_path: str) -> List[FileMetadata]:
+    def extract_hashes_from_tar(self, file_path: str, exclude_regex: Optional[str]) -> List[FileMetadata]:
         """
         This method returns all hashes of all files contained in a tar file.
         """
@@ -72,7 +71,7 @@ class NpmResource(Resource):
             for member in tar.getmembers():
                 file = tar.extractfile(member)
 
-                if file is None:
+                if file is None or not self.should_save(exclude_regex, member.path):
                     continue
                 files.append((member.path, Hash.hash_bytes(file.read())))
         return files
@@ -94,7 +93,7 @@ class NpmResource(Resource):
                     self._database.insert_file(session, npm_module_name, file_path)
                     self._database.insert_or_update_hash(session, file_hash, npm_module_name, [version])
 
-    def compute_hashes(self, session_scope, target: str):
+    def compute_hashes(self, session_scope, target: str, exclude_regex: Optional[str]):
         """
         This method downloads all versions of an npm module and stores all the versions with their associated files
         and hashes and stores them in the database.
@@ -108,6 +107,6 @@ class NpmResource(Resource):
                 file_path = f"{tmp_dir_name}/{target}-{version}.tgz"
 
                 self.save_tar_to_disk(file_path, target, version)
-                files_info[version] = self.extract_hashes_from_tar(file_path)
+                files_info[version] = self.extract_hashes_from_tar(file_path, exclude_regex)
 
         self._save_hashes(session_scope, files_info, versions, target)
