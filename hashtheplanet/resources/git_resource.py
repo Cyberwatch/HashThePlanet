@@ -3,6 +3,7 @@ This module handles Git resources to generate hashs.
 """
 # standard imports
 import os
+import re
 import subprocess
 import tempfile
 from stat import S_ISDIR, S_ISREG
@@ -18,6 +19,7 @@ from loguru import logger
 # project imports
 from hashtheplanet.sql.db_connector import Hash, Version as VersionTable
 from hashtheplanet.resources.resource import Resource
+from hashtheplanet.config.extensions_list import EXCLUDED_FILE_PATTERN
 
 # types
 FilePath = str
@@ -51,7 +53,9 @@ class GitResource(Resource):
         for blob in commit.tree.traverse():
             if S_ISDIR(blob.mode):
                 continue
-            file_list.append((blob.path, blob.hexsha))
+            match_ext = re.search(EXCLUDED_FILE_PATTERN, blob.path)
+            if not match_ext:
+                file_list.append((blob.path, blob.hexsha))
         return file_list
 
     @staticmethod
@@ -104,11 +108,14 @@ class GitResource(Resource):
 
         for diff in commit_diff:
             diff: Diff = diff
-
             if diff.a_blob and S_ISREG(diff.a_blob.mode):
-                files.append((diff.a_blob.path, tag_b.name, diff.a_blob.hexsha))
+                match_ext = re.search(EXCLUDED_FILE_PATTERN, diff.a_blob.path)
+                if not match_ext:
+                    files.append((diff.a_blob.path, tag_b.name, diff.a_blob.hexsha))
             elif diff.b_blob and S_ISREG(diff.b_blob.mode):
-                files.append((diff.b_blob.path, tag_b.name, diff.b_blob.hexsha))
+                match_ext = re.search(EXCLUDED_FILE_PATTERN, diff.b_blob.path)
+                if not match_ext:
+                    files.append((diff.b_blob.path, tag_b.name, diff.b_blob.hexsha))
         return files
 
     def _get_diff_files(self, tags: List[Tag]) -> List[GitFileMetadata]:
@@ -131,7 +138,9 @@ class GitResource(Resource):
         files: List[GitFileMetadata] = []
 
         for (file_path, blob_hash) in self.get_all_files_from_commit(tag.commit):
-            files.append((file_path, tag.name, blob_hash))
+            match_ext = re.search(EXCLUDED_FILE_PATTERN, file_path)
+            if not match_ext:
+                files.append((file_path, tag.name, blob_hash))
         return files
 
     @staticmethod
