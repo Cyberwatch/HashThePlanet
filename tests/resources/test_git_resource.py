@@ -52,8 +52,8 @@ def test_get_all_files_from_commit():
         def traverse(*args):
             return [
                 MockBlob(33188, "LICENSE", "d159169d1050894d3ea3b98e1c965c4058208fe1"),
-                MockBlob(16384, "dist", "29a422c19251aeaeb907175e9b3219a9bed6c616"),
-                MockBlob(33188, "setup.cfg", "e42f952edc48e2c085c206166bf4f1ead4d4b058"),
+                MockBlob(16384, "dist.js", "29a422c19251aeaeb907175e9b3219a9bed6c616"),
+                MockBlob(33188, "setup.txt", "e42f952edc48e2c085c206166bf4f1ead4d4b058"),
             ]
 
     class MockCommit():
@@ -69,7 +69,7 @@ def test_get_all_files_from_commit():
         assert len(files) == 2
         assert files[0][0] == "LICENSE"
         assert files[0][1] == "d159169d1050894d3ea3b98e1c965c4058208fe1"
-        assert files[1][0] == "setup.cfg"
+        assert files[1][0] == "setup.txt"
         assert files[1][1] == "e42f952edc48e2c085c206166bf4f1ead4d4b058"
 
 def test_hash_files():
@@ -163,9 +163,9 @@ def test_get_changes_between_two_tags():
     class MockCommit():
         def diff(*args):
             return [
-                MockDiff(MockBlob(16384, "dist", "29a422c19251aeaeb907175e9b3219a9bed6c616"), None),
+                MockDiff(MockBlob(16384, "dist.js", "29a422c19251aeaeb907175e9b3219a9bed6c616"), None),
                 MockDiff(None, MockBlob(33188, "LICENSE", "d159169d1050894d3ea3b98e1c965c4058208fe1")),
-                MockDiff(MockBlob(33188, "setup.cfg", "e42f952edc48e2c085c206166bf4f1ead4d4b058"), None)
+                MockDiff(MockBlob(33188, "setup.txt", "e42f952edc48e2c085c206166bf4f1ead4d4b058"), None)
             ]
 
     git_resource = GitResource(None)
@@ -181,7 +181,7 @@ def test_get_changes_between_two_tags():
     assert git_files_metadata[0][1] == "1.2.3"
     assert git_files_metadata[0][2] == "d159169d1050894d3ea3b98e1c965c4058208fe1"
 
-    assert git_files_metadata[1][0] == "setup.cfg"
+    assert git_files_metadata[1][0] == "setup.txt"
     assert git_files_metadata[1][1] == "1.2.3"
     assert git_files_metadata[1][2] == "e42f952edc48e2c085c206166bf4f1ead4d4b058"
 

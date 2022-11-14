@@ -2,6 +2,7 @@
 This module handles npm resources to generate hashes.
 """
 #standard imports
+import re
 import tarfile
 import tempfile
 from typing import Dict, List, Set, Tuple
@@ -14,6 +15,7 @@ from bs4 import BeautifulSoup
 # project imports
 from hashtheplanet.sql.db_connector import Hash
 from hashtheplanet.resources.resource import Resource
+from hashtheplanet.config.extensions_list import EXCLUDED_FILE_PATTERN
 
 # types
 FileHash = str
@@ -92,8 +94,10 @@ class NpmResource(Resource):
             self._database.insert_versions(session, npm_module_name, versions)
             for version, files in files_info.items():
                 for (file_path, file_hash) in files:
-                    self._database.insert_file(session, npm_module_name, file_path)
-                    self._database.insert_or_update_hash(session, file_hash, npm_module_name, [version])
+                    match_ext = re.search(EXCLUDED_FILE_PATTERN, file_path)
+                    if not match_ext:
+                        self._database.insert_file(session, npm_module_name, file_path)
+                        self._database.insert_or_update_hash(session, file_hash, npm_module_name, [version])
 
     def compute_hashes(self, session_scope, target: str):
         """
