@@ -32,7 +32,7 @@ class NpmResource(Resource):
         """
         This method retrieves npm module versions.
         """
-        page = requests.get(f"https://www.npmjs.com/package/{npm_module_name}?activeTab=versions")
+        page = requests.get(f"https://www.npmjs.com/package/{npm_module_name}?activeTab=versions", timeout=10)
         soup = BeautifulSoup(page.content, "html.parser")
         versions = set()
 
@@ -56,7 +56,8 @@ class NpmResource(Resource):
         """
         request = requests.get(
             f"https://registry.npmjs.org/{npm_module_name}/-/{npm_module_name}-{version}.tgz",
-            allow_redirects=True
+            allow_redirects=True,
+            timeout=10
         )
         with open(file_path, 'wb') as file_fd:
             file_fd.write(request.content)
