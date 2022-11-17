@@ -66,9 +66,9 @@ def test_insert_versions(dbsession):
 
     inserted_versions = dbsession.query(Version)
     assert inserted_versions.count() == 3
-    for idx, inserted_version in enumerate(inserted_versions):
+    for inserted_version, expected version in inserted_versions.zip(versions):
         assert inserted_version.technology == techno
-        assert inserted_version.version == versions[idx]
+        assert inserted_version.version == expected_version
 
 
 def test_get_versions(dbsession):
