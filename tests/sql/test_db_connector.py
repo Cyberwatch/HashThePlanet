@@ -66,9 +66,9 @@ def test_insert_versions(dbsession):
 
     inserted_versions = dbsession.query(Version)
     assert inserted_versions.count() == 3
-    for idx, _ in enumerate(inserted_versions):
-        assert inserted_versions[idx].technology == techno
-        assert inserted_versions[idx].version == versions[idx]
+    for inserted_version, expected version in inserted_versions.zip(versions):
+        assert inserted_version.technology == techno
+        assert inserted_version.version == expected_version
 
 
 def test_get_versions(dbsession):
@@ -84,8 +84,8 @@ def test_get_versions(dbsession):
 
     retrieved_versions = DbConnector.get_versions(dbsession, techno)
     assert len(retrieved_versions) == 2
-    for idx, _ in enumerate(retrieved_versions):
-        assert retrieved_versions[idx] == versions[idx]
+    for idx, retrieved_version in enumerate(retrieved_versions):
+        assert retrieved_version == versions[idx]
 
 
 def test_insert_file(dbsession):
@@ -179,10 +179,10 @@ def test_get_all_hashs(dbsession):
 
     retrieved_hashs = DbConnector.get_all_hashs(dbsession)
     assert len(retrieved_hashs) == 2
-    for idx, _ in enumerate(retrieved_hashs):
-        assert retrieved_hashs[idx].hash == hashs[idx]
-        assert retrieved_hashs[idx].technology == techno
-        assert retrieved_hashs[idx].versions == JSONEncoder().encode({"versions": [versions[idx]]})
+    for idx, retrieved_hash in enumerate(retrieved_hashs):
+        assert retrieved_hash.hash == hashs[idx]
+        assert retrieved_hash.technology == techno
+        assert retrieved_hash.versions == JSONEncoder().encode({"versions": [versions[idx]]})
 
 def test_find_hash(dbsession):
     """
