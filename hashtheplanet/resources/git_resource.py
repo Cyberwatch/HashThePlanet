@@ -111,7 +111,7 @@ class GitResource(Resource):
             if diff.a_blob and S_ISREG(diff.a_blob.mode):
                 match_ext = re.search(EXCLUDED_FILE_PATTERN, diff.a_blob.path)
                 if not match_ext:
-                    files.append((diff.a_blob.path, tag_b.name, diff.a_blob.hexsha))
+                    files.append((diff.a_blob.path, tag_a.name, diff.a_blob.hexsha))
             elif diff.b_blob and S_ISREG(diff.b_blob.mode):
                 match_ext = re.search(EXCLUDED_FILE_PATTERN, diff.b_blob.path)
                 if not match_ext:
