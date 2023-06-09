@@ -7,3 +7,6 @@ dist/*
 
 # do not remove the dist folder
 !dist/.keep
+
+.idea/
+build/*
