@@ -145,7 +145,7 @@ def test_save_hashes():
             assert module_name == npm_module_name
             assert file_path in (files_info["1.2.3"][0][0], files_info["1.2.4"][0][0])
 
-        def insert_or_update_hash(self, session, file_hash, module_name, versions):
+        def insert_or_update_hash(self, session, file_path, file_hash, module_name, versions):
             assert file_hash in (files_info["1.2.3"][0][1], files_info["1.2.4"][0][1])
             assert module_name == npm_module_name
             assert versions in (["1.2.3"], ["1.2.4"])

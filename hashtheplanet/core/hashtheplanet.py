@@ -105,8 +105,7 @@ class HashThePlanet():
         """
         Analyze a file and returns its technology and its versions
         """
-        file_hash = Hash.hash_file(file_path)
-
+        file_hash = Hash.calculate_git_hash(file_path)
         if file_hash is None:
             return (None, None)
         return self.analyze_hash(file_hash)
@@ -207,7 +206,7 @@ def main():
     hashtheplanet = HashThePlanet(args.output, args.input)
 
     if args.file is not None:
-        readable_hash = Hash.hash_file(args.file)
+        readable_hash = Hash.calculate_git_hash(args.file)
         if readable_hash is None:
             return
         hashtheplanet.find_hash(readable_hash)

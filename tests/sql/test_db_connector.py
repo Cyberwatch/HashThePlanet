@@ -115,11 +115,12 @@ def test_insert_or_update_hash(dbsession):
     hash_value = "ab78a59a6f2fbacdceb42bc4b6f1aeff0445d119a83128a20786d34bc3f64527"
     techno = "jQuery"
     versions = ["1.2.3", "1.3.4"]
-
-    DbConnector.insert_or_update_hash(dbsession, hash_value, techno, [versions[0]])
+    filename = "misc/tabledrag.js"
+    DbConnector.insert_or_update_hash(dbsession, filename, hash_value, techno, [versions[0]])
 
     inserted_hash = dbsession.query(Hash).first()
     assert inserted_hash.hash == hash_value
+    assert inserted_hash.file == filename
     assert inserted_hash.technology == techno
     assert inserted_hash.versions == JSONEncoder().encode({"versions": [versions[0]]})
 
@@ -133,10 +134,11 @@ def test_insert_or_update_hash_already_added_hash(dbsession):
 
     hash_value = "ab78a59a6f2fbacdceb42bc4b6f1aeff0445d119a83128a20786d34bc3f64527"
     techno = "jQuery"
+    filename = "misc/tabledrag.js"
     versions = ["1.2.3", "1.3.4"]
 
-    DbConnector.insert_or_update_hash(dbsession, hash_value, techno, [versions[0]])
-    DbConnector.insert_or_update_hash(dbsession, hash_value, techno, [versions[1]])
+    DbConnector.insert_or_update_hash(dbsession, filename, hash_value, techno, [versions[0]])
+    DbConnector.insert_or_update_hash(dbsession, filename, hash_value, techno, [versions[1]])
     # hash already added but not this version
     inserted_hash = dbsession.query(Hash)
     assert inserted_hash.count() == 1
@@ -152,11 +154,12 @@ def test_insert_or_update_hash_already_added_hash_and_version(dbsession):
 
     hash_value = "ab78a59a6f2fbacdceb42bc4b6f1aeff0445d119a83128a20786d34bc3f64527"
     techno = "jQuery"
+    filename = "misc/tabledrag.js"
     versions = ["1.2.3", "1.3.4"]
 
-    DbConnector.insert_or_update_hash(dbsession, hash_value, techno, [versions[0]])
-    DbConnector.insert_or_update_hash(dbsession, hash_value, techno, [versions[1]])
-    DbConnector.insert_or_update_hash(dbsession, hash_value, techno, [versions[1]])
+    DbConnector.insert_or_update_hash(dbsession, filename, hash_value, techno, [versions[0]])
+    DbConnector.insert_or_update_hash(dbsession, filename, hash_value, techno, [versions[1]])
+    DbConnector.insert_or_update_hash(dbsession, filename, hash_value, techno, [versions[1]])
     # hash and version already added
     inserted_hash = dbsession.query(Hash)
     assert inserted_hash.count() == 1
@@ -170,17 +173,19 @@ def test_get_all_hashs(dbsession):
 
     hashs = ["abcdef0123456789", "0123456789abcdef"]
     techno = "jQuery"
+    filename = "misc/tabledrag.js"
     versions = ["1.2.3", "1.3.4"]
 
-    dbsession.add(Hash(hash=hashs[0], technology=techno, versions=JSONEncoder() \
+    dbsession.add(Hash(hash=hashs[0], file=filename, technology=techno, versions=JSONEncoder() \
                 .encode({"versions": [versions[0]]})))
-    dbsession.add(Hash(hash=hashs[1], technology=techno, versions=JSONEncoder() \
+    dbsession.add(Hash(hash=hashs[1], file=filename, technology=techno, versions=JSONEncoder() \
                 .encode({"versions": [versions[1]]})))
 
     retrieved_hashs = DbConnector.get_all_hashs(dbsession)
     assert len(retrieved_hashs) == 2
     for idx, retrieved_hash in enumerate(retrieved_hashs):
         assert retrieved_hash.hash == hashs[idx]
+        assert retrieved_hash.file == filename
         assert retrieved_hash.technology == techno
         assert retrieved_hash.versions == JSONEncoder().encode({"versions": [versions[idx]]})
 
@@ -189,12 +194,13 @@ def test_find_hash(dbsession):
     Unit tests for find_hash method.
     """
     hashs = ["abcdef0123456789", "0123456789abcdef"]
+    filename= "misc/tabledrag.js"
     techno = "jQuery"
     versions = ["1.2.3", "1.3.4"]
 
-    dbsession.add(Hash(hash=hashs[0], technology=techno, versions=JSONEncoder() \
+    dbsession.add(Hash(hash=hashs[0], file=filename, technology=techno, versions=JSONEncoder() \
                 .encode({"versions": [versions[0]]})))
-    dbsession.add(Hash(hash=hashs[1], technology=techno, versions=JSONEncoder() \
+    dbsession.add(Hash(hash=hashs[1], file=filename, technology=techno, versions=JSONEncoder() \
                 .encode({"versions": [versions[1]]})))
 
     result = DbConnector.find_hash(dbsession, "0123456789abcdef")

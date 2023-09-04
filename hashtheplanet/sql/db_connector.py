@@ -3,12 +3,14 @@ This module handles connections and requests to the database
 """
 # standard imports
 import hashlib
+import os
 from json import JSONEncoder, loads
 from typing import List
+from git import Repo
 
 # third party imports
 from loguru import logger
-from sqlalchemy import JSON, Column, Text, select, update
+from sqlalchemy import JSON, Column, Text, select, update, and_
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
 from sqlalchemy.sql.sqltypes import Integer
 
@@ -52,6 +54,7 @@ class Hash(Base):
         return cls.__name__.lower()
 
     hash = Column(Text, nullable=False, primary_key=True)
+    file = Column(Text, nullable=False)
     technology = Column(Text, nullable=False)
     versions = Column(JSON, nullable=False)
 
@@ -65,6 +68,21 @@ class Hash(Base):
                 file_bytes = file_descriptor.read() # read entire file as bytes
                 readable_hash = hashlib.sha256(file_bytes).hexdigest()
                 return readable_hash
+        except OSError as error:
+            logger.error(f"Error with file {file_path} : {error}")
+        return None
+
+    @staticmethod
+    def calculate_git_hash(file_path: str) -> str:
+        """
+        This method computes the Git SHA1 hash of the provided file and returns it.
+        """
+        repo_path = os.path.dirname(os.path.abspath(file_path))
+        repo = Repo.init(repo_path)  # Initialize a Git repository object
+        try:
+            with open(file_path, "rb"):
+                blob_hash = repo.git.hash_object(file_path)  # Calculate the hash
+            return blob_hash
         except OSError as error:
             logger.error(f"Error with file {file_path} : {error}")
         return None
@@ -131,7 +149,7 @@ class DbConnector():
             logger.debug(f"Entry {entry} already exists in files database")
 
     @staticmethod
-    def insert_or_update_hash(session, hash_value: str, technology: str, versions: List[str]):
+    def insert_or_update_hash(session,file_name: str, hash_value: str, technology: str, versions: List[str]):
         """
         Insert a new hash related to technology and version in hash table if it does not exist yet.
         If it already exists, update related versions.
@@ -140,12 +158,13 @@ class DbConnector():
         entry = session.execute(stmt).scalar_one_or_none()
 
         if not entry:
-            new_hash = Hash(hash=hash_value, technology=technology, versions=JSONEncoder() \
+            new_hash = Hash(file = file_name, hash=hash_value, technology=technology, versions=JSONEncoder() \
                 .encode({"versions": versions}))
             session.add(new_hash)
             logger.debug(f"Entry {new_hash} added to hash database")
         else:
             existing_versions: List[str] = loads(entry.versions)["versions"]
+
 
             for version in versions:
                 if version not in existing_versions:
@@ -155,6 +174,28 @@ class DbConnector():
                     .execution_options(synchronize_session="fetch")
             session.execute(stmt)
             logger.debug(f"Entry {entry} updated with new versions {versions}")
+
+    @staticmethod
+    def insert_version_existing_files(session, file_name: str, old_version: str, new_version: str):
+        """
+        Insert a new hash related to technology and version in hash table if it does not exist yet.
+        If it already exists, update related versions.
+        """
+
+        stmt = select(Hash).filter(Hash.file ==file_name, Hash.versions.contains(str(old_version)))
+
+        entries = session.execute(stmt).scalars().all()
+        if entries:
+            for entry in entries:
+                existing_versions: List[str] = loads(entry.versions)["versions"]
+
+                if old_version in existing_versions:
+                    existing_versions.append(new_version)
+                    stmt = update(Hash).where(and_(Hash.file == file_name, Hash.versions.contains(old_version))) \
+                        .values(versions=JSONEncoder().encode({"versions": existing_versions})) \
+                        .execution_options(synchronize_session="fetch")
+                    session.execute(stmt)
+                    logger.debug(f"Entry {entry} updated with new versions {existing_versions}")
 
     @staticmethod
     def get_all_hashs(session):

@@ -6,18 +6,17 @@ import os
 import re
 import subprocess
 import tempfile
-from stat import S_ISDIR, S_ISREG
+from stat import S_ISDIR
 from typing import List, Tuple
 
 # third party imports
 from git import GitCommandError, Repo
-from git.diff import Diff, DiffIndex
 from git.objects.commit import Commit
 from git.refs.tag import Tag
 from loguru import logger
 
 # project imports
-from hashtheplanet.sql.db_connector import Hash, Version as VersionTable
+from hashtheplanet.sql.db_connector import Hash
 from hashtheplanet.resources.resource import Resource
 from hashtheplanet.config.extensions_list import EXCLUDED_FILE_PATTERN
 
@@ -91,71 +90,29 @@ class GitResource(Resource):
         os.chdir(current_dir)
         return files_info
 
-    @staticmethod
-    def _get_changes_between_two_tags(tag_a: Tag, tag_b: Tag) -> List[GitFileMetadata]:
-        """
-        This method fetches all changes (modification & creation) between two tags,
-        and returns a list of changes containing:
-        - the file path
-        - the associated tag name
-        - the associated blob hash
-        """
-        files: List[GitFileMetadata] = []
 
-        commit_a = tag_a.commit
-        commit_b = tag_b.commit
-        commit_diff: DiffIndex = commit_a.diff(commit_b)
-
-        for diff in commit_diff:
-            diff: Diff = diff
-            if diff.a_blob and S_ISREG(diff.a_blob.mode):
-                match_ext = re.search(EXCLUDED_FILE_PATTERN, diff.a_blob.path)
-                if not match_ext:
-                    files.append((diff.a_blob.path, tag_a.name, diff.a_blob.hexsha))
-            elif diff.b_blob and S_ISREG(diff.b_blob.mode):
-                match_ext = re.search(EXCLUDED_FILE_PATTERN, diff.b_blob.path)
-                if not match_ext:
-                    files.append((diff.b_blob.path, tag_b.name, diff.b_blob.hexsha))
-        return files
-
-    def _get_diff_files(self, tags: List[Tag]) -> List[GitFileMetadata]:
-        """
-        This method retrieves all changes between a list of tags and returns them.
-        """
-        logger.info("Retrieving diff of all tags ...")
+    def _get_blob_hashes(self, tags : List[Tag]) -> List[FileMetadata]:
 
         files: List[GitFileMetadata] = []
 
-        # This line makes couples with the n + 1 element. Example: (A,B), (B,C), ...
-        for (tag_a, tag_b) in zip(tags[:-1], tags[1:]):
-            files += self._get_changes_between_two_tags(tag_a, tag_b)
+        for tag in tags:
+            tag_name = tag.name
+            commit = tag.commit
+
+            for item in commit.tree.traverse():
+                if item.type == 'blob':
+                    file_path = item.path
+                    file_hash = item.hexsha
+                    match_ext = re.search(EXCLUDED_FILE_PATTERN, file_path)
+                    if not match_ext:
+                        files.append((file_path, tag_name, file_hash))
+
         return files
-
-    def _get_tag_files(self, tag: Tag) -> List[GitFileMetadata]:
-        """
-        This method retrieves all files with their tag name and their blob hash in a tag.
-        """
-        files: List[GitFileMetadata] = []
-
-        for (file_path, blob_hash) in self.get_all_files_from_commit(tag.commit):
-            match_ext = re.search(EXCLUDED_FILE_PATTERN, file_path)
-            if not match_ext:
-                files.append((file_path, tag.name, blob_hash))
-        return files
-
-    @staticmethod
-    def _get_diff_versions(first_version: str, last_version: str, tags: List[Tag]) -> List[str]:
-        """
-        This method retrieves all tags between two tags.
-        """
-        tag_names = list(map(lambda tag: tag.name, tags))
-        return tag_names[tag_names.index(first_version):tag_names.index(last_version)]
 
     def _save_hashes(
         self,
         session_scope,
         files_info: List[FileMetadata],
-        tags: List[Tag],
         technology: str
     ):
         """
@@ -164,50 +121,17 @@ class GitResource(Resource):
         with session_scope() as session:
             file_record = {}
 
-            self._database.insert_versions(session, technology, tags)
             for (file_path, tag_name, file_hash) in files_info:
-                (last_version, last_hash) = file_record.get(file_path) or (None, None)
 
-                self._database.insert_file(session, technology, file_path)
-
-                if last_version is not None:
-                    # We retrieve all the versions between the last version of the file and this one
-                    # and then we add them to the last hash
-                    versions = self._get_diff_versions(last_version, tag_name, tags)
-                    self._database.insert_or_update_hash(session, last_hash, technology, versions)
-
-                self._database.insert_or_update_hash(session, file_hash, technology, [tag_name])
+                self._database.insert_or_update_hash(session, file_path, file_hash, technology, [tag_name])
                 file_record[file_path] = (tag_name, file_hash)
-
-    @staticmethod
-    def _filter_stored_tags(stored_versions: List[VersionTable], found_tags: List[Tag]) -> List[Tag]:
-        """
-        This function will compare the stored tags (the tags in the htp database)
-        and the tags found in the git repository, then after it keeps only the non stored tags.
-        """
-        result = []
-
-        if len(stored_versions) == len(found_tags):
-            return []
-        for found_tag_idx, found_tag in enumerate(found_tags):
-            last_found_tag_idx = found_tag_idx - 1
-
-            if found_tag_idx >= len(stored_versions) or found_tag.name != stored_versions[found_tag_idx]:
-
-                # this verification permits to know if it's the first to be added,
-                # and if it's the case, then we add the one before to permits to make a diff
-                if last_found_tag_idx >= 0 and not result:
-                    result.append(found_tags[last_found_tag_idx])
-                result.append(found_tag)
-        return result
 
     def compute_hashes(self, session_scope, target: str):
         """
-        This method clones the repository from url, retrieves tags, compares each tags to retrieve only modified files,
-        computes their hashes and then stores the tags & files information in the database.
+        This method clones the repository from url, retrieves tags, retrieve the hashes, and then stores the tags
+        & files information in the database.
         """
         technology = target.split('.git')[0].split('/')[-1]
-        tags: List[Tag] = []
         files: List[GitFileMetadata] = []
 
         with tempfile.TemporaryDirectory() as tmp_dir_name:
@@ -220,21 +144,10 @@ class GitResource(Resource):
             logger.info("Retrieving tags ...")
             tags = repo.tags.copy()
 
-            with session_scope() as session:
-                stored_tags = self._database.get_versions(session, technology)
+            logger.info("Retrieving the hashes from the Git repository...")
+            files += self._get_blob_hashes(tags)
 
-                if not stored_tags:
-                    logger.info("Retrieving files from the first tag ...")
-                    files += self._get_tag_files(tags[0])
-
-                logger.info("Filtering the tags ...")
-                tags = self._filter_stored_tags(stored_tags, tags)
-
-            logger.info("Retrieving only modified files between the tags ...")
-            files += self._get_diff_files(tags)
-
-            logger.info("Generating hashes ...")
-            files_info = self._hash_files(files, tmp_dir_name)
+            logger.info("== DONE ! ==")
 
         logger.info("Saving hashes ...")
-        self._save_hashes(session_scope, files_info, tags, technology)
+        self._save_hashes(session_scope, files, technology)
