@@ -16,6 +16,7 @@ from hashtheplanet.sql.db_connector import DbConnector
 # third party imports
 from git.exc import GitCommandError
 from git.objects.commit import Commit
+from git import Tag
 
 
 def subprocess_mock(blobs: Dict[str, str]):
@@ -145,110 +146,6 @@ def test_hash_files():
         assert mock_exec.call_count == 3
 
 
-def test_get_changes_between_two_tags():
-    """
-    Unit tests for _get_changes_between_two_tags method.
-    """
-    class MockBlob():
-        def __init__(self, mode: int, path: str, hexsha: str):
-            self.mode = mode
-            self.path = path
-            self.hexsha = hexsha
-
-    class MockDiff():
-        def __init__(self, a_blob: MockBlob, b_blob: MockBlob):
-            self.a_blob = a_blob
-            self.b_blob = b_blob
-
-    class MockCommit():
-        def diff(*args):
-            return [
-                MockDiff(MockBlob(16384, "dist.js", "29a422c19251aeaeb907175e9b3219a9bed6c616"), None),
-                MockDiff(None, MockBlob(33188, "LICENSE", "d159169d1050894d3ea3b98e1c965c4058208fe1")),
-                MockDiff(MockBlob(33188, "setup.txt", "e42f952edc48e2c085c206166bf4f1ead4d4b058"), None)
-            ]
-
-    git_resource = GitResource(None)
-    tag_mock = MagicMock()
-    tag_mock.commit = MockCommit()
-    tag_mock.name = "1.2.3"
-
-    git_files_metadata = git_resource._get_changes_between_two_tags(tag_mock, tag_mock)
-
-    assert len(git_files_metadata) == 2
-
-    assert git_files_metadata[0][0] == "LICENSE"
-    assert git_files_metadata[0][1] == "1.2.3"
-    assert git_files_metadata[0][2] == "d159169d1050894d3ea3b98e1c965c4058208fe1"
-
-    assert git_files_metadata[1][0] == "setup.txt"
-    assert git_files_metadata[1][1] == "1.2.3"
-    assert git_files_metadata[1][2] == "e42f952edc48e2c085c206166bf4f1ead4d4b058"
-
-def test_get_diff_files():
-    """
-    Unit tests for _get_diff_files method.
-    """
-    tag_list = ["A", "B", "C"]
-
-    def mock_get_changes_between_two_tags(self, tag_a, tag_b):
-        return [[tag_a, tag_b]]
-
-    with patch.object(GitResource, '_get_changes_between_two_tags', mock_get_changes_between_two_tags):
-        git_resource = GitResource(None)
-        tags_diff = git_resource._get_diff_files(tag_list)
-
-        assert ["A", "B"] in tags_diff
-        assert ["B", "C"] in tags_diff
-
-def test_get_tag_files():
-    """
-    Unit tests for _get_tag_files method.
-    """
-    def mock_get_all_files_from_commit(*args):
-        return [
-            ["LICENSE", "d159169d1050894d3ea3b98e1c965c4058208fe1"],
-            ["setup.cfg", "e42f952edc48e2c085c206166bf4f1ead4d4b058"]
-        ]
-
-    with patch.object(GitResource, 'get_all_files_from_commit', mock_get_all_files_from_commit):
-        git_resource = GitResource(None)
-        tag_mock = MagicMock()
-        tag_mock.name = "1.2.3"
-
-        tag_files = git_resource._get_tag_files(tag_mock)
-
-        assert len(tag_files) == 2
-        assert tag_files[0][0] == "LICENSE"
-        assert tag_files[0][1] == "1.2.3"
-        assert tag_files[0][2] == "d159169d1050894d3ea3b98e1c965c4058208fe1"
-
-        assert tag_files[1][0] == "setup.cfg"
-        assert tag_files[1][1] == "1.2.3"
-        assert tag_files[1][2] == "e42f952edc48e2c085c206166bf4f1ead4d4b058"
-
-def test_get_diff_versions():
-    """
-    Unit tests for _get_diff_versions method.
-    """
-    class MockTag():
-        def __init__(self, name: str):
-            self.name = name
-
-    first_version = "1.2.3"
-    last_version = "1.4"
-
-    versions = [MockTag("1.2.3"), MockTag("1.2.4"), MockTag("1.3"), MockTag("1.4"), MockTag("1.5.0")]
-
-    git_resource = GitResource(None)
-    diff_versions = git_resource._get_diff_versions(first_version, last_version, versions)
-
-    assert len(diff_versions) == 3
-    assert first_version in diff_versions
-    assert "1.2.4" in diff_versions
-    assert "1.3" in diff_versions
-    assert last_version not in diff_versions
-
 def test_save_hashes(dbsession):
     """
     Unit tests for _get_diff_versions method.
@@ -276,116 +173,49 @@ def test_save_hashes(dbsession):
     with mock.patch.object(DbConnector, "insert_versions", MagicMock()) as db_insert_v, \
         mock.patch.object(DbConnector, "insert_file", MagicMock()) as db_insert_f, \
         mock.patch.object(DbConnector, "insert_or_update_hash", MagicMock()) as db_insert_h:
-        git_resource._save_hashes(session_scope, files_metadata, tags, "foobar")
-
-        db_insert_v.assert_called_once()
-
-        assert db_insert_f.called is True
-        assert db_insert_f.call_count == 3
+        git_resource._save_hashes(session_scope, files_metadata, "foobar")
 
         assert db_insert_h.called is True
-        assert db_insert_h.call_count == 4
-
-def test_filter_stored_tags():
-    """
-    Should test the behavior of tags when some of them are already downloaded
-    """
-
-    class MockedTag():
-        def __init__(self, name) -> None:
-            self.name = name
-
-    git_resource = GitResource(None)
-    stored_versions = [
-        "A",
-        "B",
-        "C",
-        "D"
-    ]
-    repository_versions = [
-        MockedTag("A"),
-        MockedTag("B"),
-        MockedTag("C"),
-        MockedTag("D"),
-        MockedTag("E")
-    ]
-
-    result = git_resource._filter_stored_tags(stored_versions, repository_versions)
-
-    # In this situation, we have already downloaded the tags: A, B, C, D
-    # and in the repository there are the tags: A, B, C, D, E
-    # So we need to download only the tags D and E to make a diff a calculates the hash of the found files
-    assert [tag.name for tag in result] == ["D", "E"]
-
-    stored_versions = [
-        "A",
-        "B",
-        "C",
-    ]
-    repository_versions = [
-        MockedTag("B"),
-        MockedTag("C"),
-        MockedTag("D"),
-        MockedTag("E")
-    ]
-
-    result = git_resource._filter_stored_tags(stored_versions, repository_versions)
-
-    # In this situation, we have already downloaded the tags: A, B, C
-    # and in the repository there are the tags: B, C, D, E
-    # We can see that we have the tag A that disapeared from the repository, so we need to recalculate the hash
-    # of the files from the the missing tag A to the last one
-    assert [tag.name for tag in result] == ["B", "C", "D", "E"]
-
-    stored_versions = [
-        "A",
-        "B",
-        "D",
-        "E",
-    ]
-    repository_versions = [
-        MockedTag("A"),
-        MockedTag("B"),
-        MockedTag("C"),
-        MockedTag("D"),
-        MockedTag("E")
-    ]
-
-    result = git_resource._filter_stored_tags(stored_versions, repository_versions)
-
-    # In this situation, we have already downloaded the tags: A, B, D, E
-    # and in the repository there are the tags: A, B, C, D, E
-    # We can see that in the repository a tag has been added between all of them
-    # So we need to download the tag before the added one and all next to create a diff
-    # and calculate the hash of the files
-    assert [tag.name for tag in result] == ["B", "C", "D", "E"]
-
-    stored_versions = [
-        "A",
-    ]
-    repository_versions = [
-        MockedTag("A"),
-    ]
-
-    result = git_resource._filter_stored_tags(stored_versions, repository_versions)
-
-    # In this situation, we have already downloaded the tag: A
-    # and in the repository there is the tag: A
-    # We can see that we have already downloaded the tag, so we return an empty list
-    assert not [tag.name for tag in result]
-
+        assert db_insert_h.call_count == 3
 
 def test_compute_hashes():
     """
     Unit tests for compute_hashes.
     """
+
+    files = [('LICENSE', '1.2.3', 'd159169d1050894d3ea3b98e1c965c4058208fe1'),
+             ('dist.js', '1.2.3', '29a422c19251aeaeb907175e9b3219a9bed6c616'),
+             ('setup.txt', '1.2.3', 'e42f952edc48e2c085c206166bf4f1ead4d4b058'),
+             ('LICENSE', '1.2.4', 'd159169d1050894d3ea3b98e1c965c4058208fe1'),
+             ('dist.js', '1.2.4', '29a422c19251aeaeb907175e9b3219a9bed6c616'),
+             ('setup.txt', '1.2.4', 'e42f952edc48e2c085c206166bf4f1ead4d4b058')]
+    class MockTree():
+        def traverse(*args):
+            return [
+                MockBlob(33188, "LICENSE", "d159169d1050894d3ea3b98e1c965c4058208fe1", "blob"),
+                MockBlob(16384, "dist.js", "29a422c19251aeaeb907175e9b3219a9bed6c616", "blob"),
+                MockBlob(33188, "setup.txt", "e42f952edc48e2c085c206166bf4f1ead4d4b058", "blob"),
+            ]
+    class MockBlob():
+        def __init__(self, mode: int, path: str, hexsha: str, type : str):
+            self.mode = mode
+            self.path = path
+            self.hexsha = hexsha
+            self.type = type
+    class MockDiff():
+        def __init__(self, a_blob: MockBlob, b_blob: MockBlob):
+            self.a_blob = a_blob
+            self.b_blob = b_blob
+    class MockCommit():
+        tree =MockTree()
     class MockTag():
-        def __init__(self, name: str):
+        def __init__(self, name: str, commit: MockCommit):
             self.name = name
+            self.commit = MockCommit()
 
     repo_url = "http://foo.bar/foobar.git"
     tmp_dir_path = "tmp_dir"
-    tags = [MockTag("1.2.3"), MockTag("1.2.4")]
+    tags = [MockTag("1.2.3", MockCommit()), MockTag("1.2.4", MockCommit)]
 
     repo_mock = MagicMock(tags=tags)
 
@@ -399,10 +229,8 @@ def test_compute_hashes():
     def mock_tmp_dir():
         return MockDir()
 
+
     with patch.object(GitResource, "clone_repository", return_value=repo_mock) as mock_clone_repo, \
-        patch.object(GitResource, "_get_tag_files", return_value=[1]) as mock_get_tag_files, \
-        patch.object(GitResource, "_filter_stored_tags", return_value=tags) as mock_filter_stored_tags, \
-        patch.object(GitResource, "_get_diff_files", return_value=[2]) as mock_get_diff_files, \
         patch.object(GitResource, "_hash_files", return_value="hashed files") as mock_hash_files, \
         patch.object(GitResource, "_save_hashes") as mock_save_hashes, \
         patch.object(DbConnector, "get_versions", return_value=[]) as mock_get_versions, \
@@ -416,12 +244,7 @@ def test_compute_hashes():
         # In this situation, we verify that by giving a good repo_url & a good tmp_dir_path
         # we download the tags, calculate hash & store them in the database
         mock_clone_repo.assert_called_once_with(repo_url, tmp_dir_path)
-        mock_get_versions.assert_called_once()
-        mock_get_tag_files.assert_called_once_with(tags[0])
-        mock_filter_stored_tags.assert_called_once_with([], tags)
-        mock_get_diff_files.assert_called_once_with(tags)
-        mock_hash_files.assert_called_once_with([1, 2], tmp_dir_path)
-        mock_save_hashes.assert_called_once_with(session, "hashed files", tags, "foobar")
+        mock_save_hashes.assert_called_once_with(session, files, "foobar")
 
     with patch.object(
         GitResource,
@@ -429,9 +252,6 @@ def test_compute_hashes():
         MagicMock(side_effect=GitCommandError("error"))
     ) as mock_clone_repo, \
     patch("tempfile.TemporaryDirectory", MagicMock(side_effect=mock_tmp_dir)), \
-    patch.object(GitResource, "_get_tag_files", return_value=[1]) as mock_get_tag_files, \
-    patch.object(GitResource, "_filter_stored_tags", return_value=[1]) as mock_filter_stored_tags, \
-    patch.object(GitResource, "_get_diff_files", return_value=[2]) as mock_get_diff_files, \
     patch.object(GitResource, "_hash_files", return_value="hashed files") as mock_hash_files, \
     patch.object(GitResource, "_save_hashes") as mock_save_hashes, \
     patch.object(DbConnector, "get_versions") as mock_get_versions:
@@ -439,7 +259,5 @@ def test_compute_hashes():
         mock_clone_repo.assert_called_once_with(repo_url, tmp_dir_path)
 
         # In this situation, we verify that by giving a wrong repository we stop the function
-        mock_get_tag_files.assert_not_called()
-        mock_get_diff_files.assert_not_called()
         mock_hash_files.assert_not_called()
         mock_save_hashes.assert_not_called()

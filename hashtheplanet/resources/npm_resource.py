@@ -97,7 +97,7 @@ class NpmResource(Resource):
                     match_ext = re.search(EXCLUDED_FILE_PATTERN, file_path)
                     if not match_ext:
                         self._database.insert_file(session, npm_module_name, file_path)
-                        self._database.insert_or_update_hash(session, file_hash, npm_module_name, [version])
+                        self._database.insert_or_update_hash(session, file_path, file_hash, npm_module_name, [version])
 
     def compute_hashes(self, session_scope, target: str):
         """

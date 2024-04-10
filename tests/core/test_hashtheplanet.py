@@ -1,5 +1,6 @@
-
+import os
 import sys
+import tempfile
 from typing import Dict
 from unittest import mock
 from unittest.mock import MagicMock, mock_open, patch
@@ -18,7 +19,7 @@ def get_mock_open(files: Dict[str, str]):
         for expected_filename, content in files.items():
             if filename == expected_filename:
                 return mock_open(read_data=content).return_value
-        raise FileNotFoundError('(mock) Unable to open {filename}')
+        raise FileNotFoundError(f'(mock) Unable to open {filename}')
     return MagicMock(side_effect=open_mock)
 
 def test_htp_constructor():
@@ -173,37 +174,44 @@ def test_compute_hashes():
             assert False
 
 def test_analyze_file():
-    foobar_hash = "27dd147c7347026fe21b432a2297303bb9990462d886e55facda103598c687fc"
+    foobar_hash = "59a650e1abcc46811159b29f0037255124a9c522"
     foobar_technology = "foobar"
     foobar_version = '{"versions": ["1.3.4"]}'
     files = {
-        "good_hash.txt": "foobar content".encode("utf-8"),
-        "wrong_hash.txt": "wrong_hash content".encode("utf-8")
+        "good_hash.txt": "foobar content",
+        "wrong_hash.txt": "wrong_hash content"
     }
     class MockDatabase():
         def find_hash(self, session_scope, hash_str: str):
             if hash_str == foobar_hash:
-                return (foobar_technology, foobar_version)
+                return foobar_technology, foobar_version
             else:
-                return (None, None)
+                return None, None
 
-    with mock.patch("builtins.open", get_mock_open(files)):
+    with tempfile.TemporaryDirectory() as temp_dir:
+        for filename, content in files.items():
+            tmp_file_path = os.path.join(temp_dir, filename)
+            with open(tmp_file_path, "w") as file:
+                file.write(str(content))
+
         htp = HashThePlanet("output.txt", "foobar.txt")
 
         htp.session_scope = MagicMock()
         htp._database = MockDatabase()
 
-        (technology, version) = htp.analyze_file("good_hash.txt")
+        file_path = os.path.join(temp_dir, "good_hash.txt")
+        (technology, version) = htp.analyze_file(file_path)
 
         assert technology is not None and technology == foobar_technology
         assert version is not None and version == foobar_version
 
-        (technology, version) = htp.analyze_file("wrong_hash.txt")
+        file_path = os.path.join(temp_dir, "wrong_hash.txt")
+        (technology, version) = htp.analyze_file(file_path)
 
         assert technology is None
         assert version is None
 
-        (technology, version) = htp.analyze_file(None)
+        (technology, version) = htp.analyze_file("No_File")
 
         assert technology is None
         assert version is None
@@ -322,7 +330,7 @@ def test_main():
 
     with mock.patch('sys.argv', ["/foobar/", "--file", "license.txt"]), \
         patch.object(HashThePlanet, "compute_hashs", return_magic_mock()) as mock_compute_hash, \
-        patch.object(Hash, "hash_file", return_value="super hash") as mock_hash_find_hash, \
+        patch.object(Hash, "calculate_git_hash", return_value="super hash") as mock_hash_find_hash, \
         patch.object(HashThePlanet, "find_hash", return_magic_mock()) as mock_htp_find_hash:
         main()
 
