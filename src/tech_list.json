@@ -6,7 +6,9 @@
             "https://github.com/WordPress/WordPress.git",
             "https://github.com/drupal/drupal.git",
             "https://github.com/magento/magento2.git",
-            "https://github.com/joomla/joomla-cms.git"
+            "https://github.com/joomla/joomla-cms.git",
+            "https://github.com/spip/spip.git",
+            "https://github.com/PrestaShop/PrestaShop.git"
         ]
     },
     "npm": {
