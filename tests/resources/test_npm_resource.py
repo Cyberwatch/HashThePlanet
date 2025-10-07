@@ -19,27 +19,12 @@ def test_retrieve_versions():
     class MockedPage():
         def __init__(self) -> None:
             self.content = """
-            <html>
-            <head><title></title></head>
-            <body>
-                <div id="tabpanel-versions">
-                    <div>
-                        <div></div>
-                        <h3></h3>
-                        <ul><li></li></ul>
-                        <ul>
-                            <li></li>
-                            <li><a>1.0.1</a></li>
-                            <li><a>1.0.2</a></li>
-                            <li><a>1.0.3</a></li>
-                        </ul>
-                    </div>
-                    <div></div>
-                </div>
-            </body></html>
+            {
+              "versions": ["1.0.1", "1.0.2", "1.0.3"]
+            }
             """
     def mocked_get_request(url: str, *args, **kwargs):
-        assert url == f"https://www.npmjs.com/package/{npm_module_name}?activeTab=versions"
+        assert url == f"https://registry.npmjs.org/{npm_module_name}"
         return MockedPage()
 
     with mock.patch("requests.get", MagicMock(side_effect=mocked_get_request)):
