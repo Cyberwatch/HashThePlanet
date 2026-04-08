@@ -3,145 +3,119 @@ The main module for HashThePlanet
 """
 # standard imports
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from json import JSONDecodeError
 import os
 import sys
-from contextlib import contextmanager
-from typing import List, Tuple
 
 # third party imports
 from loguru import logger
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 # project imports
+from hashtheplanet.builders.json_builder import JsonBuilder
 from hashtheplanet.config.config import Config
-from hashtheplanet.executor.executor import Executor
-from hashtheplanet.sql.db_connector import Base, DbConnector, Hash
+from hashtheplanet.utils.hash_utils import calculate_git_hash
 
-HASHTHEPLANET_VERSION = "HashThePlanet 0.0.0"
+HASHTHEPLANET_VERSION = "HashThePlanet 1.0.0"
+
 
 class HashThePlanet():
     """
     The HashThePlanet class
     """
-    def __init__(self, output_file: str, input_file: str):
+    def __init__(self, input_file: str, json_dir: str = "dist",
+                 cache_dir: str = None, max_workers: int = 4):
         """
-        Initialisation requires an output filename and an input filename (csv).
+        Initialisation requires an input filename (json) and an output directory.
         """
-        self._output_file = output_file
         self._input_file = input_file
-        self._engine = create_engine(f"sqlite:///{self._output_file}")
-
-        if not os.path.exists(self._output_file):
-            Base.metadata.create_all(self._engine)
-
-        self._session = sessionmaker(self._engine)
-
-        self._database = DbConnector()
+        self._json_dir = json_dir
+        self._cache_dir = cache_dir
+        self._max_workers = max_workers
         self._config = Config()
-        self._executor = Executor(self._database, self.session_scope)
 
-    @contextmanager
-    def session_scope(self):
+    def _compute_single_target(self, resource_name: str, target: str, builder: JsonBuilder):
         """
-        Provide a transactional scope around a series of operations.
+        Compute hashes for a single target (used for parallel execution).
         """
-        session = self._session()
+        from importlib import import_module
+
+        resource_path = f"{resource_name}_resource"
+        resource_class_name = f"{resource_name.title()}Resource"
+
         try:
-            yield session
-            session.commit()
-        except:
-            session.rollback()
-            raise
-        finally:
-            session.close()
+            module = import_module("hashtheplanet.resources." + resource_path)
+        except ImportError:
+            logger.error(f"[!] Could not find module {resource_path}")
+            return
 
-    def close(self):
-        """
-        Close the connections with the database.
-        """
-        self._engine.dispose()
+        resource_instance = getattr(module, resource_class_name)()
 
-    def show_all_hashs(self):
-        """
-        Prints out all known hashs.
-        """
-        with self.session_scope() as session:
-            hashs = self._database.get_all_hashs(session)
-            if hashs:
-                for hash_value in hashs:
-                    logger.success(hash_value)
-            else:
-                logger.info("No hash to display")
+        kwargs = {"builder": builder}
+        if resource_name == "git" and self._cache_dir:
+            kwargs["cache_dir"] = self._cache_dir
 
-    def find_hash(self, file_hash):
-        """
-        Finds the associated technology to a hash.
-        """
-        with self.session_scope() as session:
-            logger.success(f"Found: {self._database.find_hash(session, file_hash)}")
+        resource_instance.compute_hashes(target, **kwargs)
 
     def compute_hashs(self):
         """
-        Computes all hashs.
+        Computes all hashes and outputs JSON files.
         """
         try:
             self._config.parse(self._input_file)
-
-            for resource_name in self._config.get_used_resources():
-                targets = self._config.get_targets(resource_name)
-
-                for target in targets:
-                    self._executor.execute(resource_name, target)
-
-            logger.info("Computing done")
-
         except (OSError, JSONDecodeError) as error:
             logger.error(f"Error: {error}")
             sys.exit(1)
 
-    def analyze_file(self, file_path: str) -> Tuple[str, dict]:
-        """
-        Analyze a file and returns its technology and its versions
-        """
-        file_hash = Hash.calculate_git_hash(file_path)
-        if file_hash is None:
-            return (None, None)
-        return self.analyze_hash(file_hash)
+        builder = JsonBuilder()
 
-    def analyze_str(self, str_data: str) -> Tuple[str, dict]:
-        """
-        Analyze a string and returns its technology and its versions
-        """
-        if str_data is None:
-            return (None, None)
+        # Load existing JSON files for incremental updates
+        if os.path.isdir(self._json_dir):
+            builder.load_json(self._json_dir)
+            logger.info(f"Loaded existing data from {self._json_dir}")
 
-        file_hash = Hash.hash_bytes(str_data.encode("utf-8"))
-        return self.analyze_hash(file_hash)
+        futures = []
+        with ThreadPoolExecutor(max_workers=self._max_workers) as executor:
+            for resource_name in self._config.get_used_resources():
+                targets = self._config.get_targets(resource_name)
+                for target in targets:
+                    target_builder = JsonBuilder()
+                    future = executor.submit(
+                        self._compute_single_target,
+                        resource_name, target, target_builder
+                    )
+                    futures.append((future, target_builder, target))
 
-    def analyze_hash(self, file_hash: str) -> Tuple[str, dict]:
-        """
-        Analyze a hash and returns its technology and its versions
-        """
-        if file_hash is None:
-            return (None, None)
-        with self.session_scope() as session:
-            return self._database.find_hash(session, file_hash)
+            for future, target_builder, target in futures:
+                try:
+                    future.result()
+                    builder.merge(target_builder)
+                    logger.info(f"Merged results for {target}")
+                except Exception as error:
+                    logger.error(f"Error processing {target}: {error}")
 
-    def get_static_files(self) -> List[str]:
-        """
-        Returns all stored static files from the database
-        """
-        with self.session_scope() as session:
-            return self._database.get_static_files(session)
+        builder.save_json(self._json_dir)
+        logger.info(f"JSON files saved to {self._json_dir}")
+        logger.info("Computing done")
 
-    def get_versions(self, technology: str) -> List[str]:
+    def find_hash(self, file_hash: str):
         """
-        Returns all stored versions for a technology
+        Search for a hash in the generated JSON files.
         """
-        with self.session_scope() as session:
-            return self._database.get_versions(session, technology)
+        builder = JsonBuilder()
+        builder.load_json(self._json_dir)
+
+        for technology in builder.get_technologies():
+            data = builder.get_technology_data(technology)
+            for file_path, hash_dict in data.items():
+                if file_hash in hash_dict:
+                    versions = hash_dict[file_hash]
+                    logger.success(f"Found: technology={technology}, file={file_path}, versions={versions}")
+                    return (technology, versions)
+
+        logger.info(f"Hash {file_hash} not found")
+        return (None, None)
+
 
 def main():
     """
@@ -149,18 +123,31 @@ def main():
     It stores arguments provided by the user and launches hash computing.
     """
     logger.remove()
-    parser = argparse.ArgumentParser(description="HashThePlanet-0.0.0")
-
-    parser.add_argument(
-        "-o", "--output",
-        default="dist/collected_data.db",
-        help="Output file name"
-    )
+    parser = argparse.ArgumentParser(description="HashThePlanet-1.0.0")
 
     parser.add_argument(
         "-i", "--input",
         default="src/tech_list.json",
         help="Input file (json) with resources targets"
+    )
+
+    parser.add_argument(
+        "--json-dir",
+        default="dist",
+        help="Output directory for JSON hash files"
+    )
+
+    parser.add_argument(
+        "--cache-dir",
+        default=None,
+        help="Directory to cache bare git repositories for incremental updates"
+    )
+
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="Number of parallel workers for processing repositories"
     )
 
     parser.add_argument(
@@ -179,13 +166,13 @@ def main():
     parser.add_argument(
         "--hash",
         default=None,
-        help="File hash"
+        help="Search for a file hash in the generated JSON files"
     )
 
     parser.add_argument(
         "-f", "--file",
         default=None,
-        help="File path"
+        help="Compute git hash of a file and search for it"
     )
 
     parser.add_argument(
@@ -203,10 +190,15 @@ def main():
         logger.add(sys.stdout, colorize=False, format="{message}", level=args.verbose)
 
     logger.info("#### HashThePlanet ####")
-    hashtheplanet = HashThePlanet(args.output, args.input)
+    hashtheplanet = HashThePlanet(
+        args.input,
+        json_dir=args.json_dir,
+        cache_dir=args.cache_dir,
+        max_workers=args.workers
+    )
 
     if args.file is not None:
-        readable_hash = Hash.calculate_git_hash(args.file)
+        readable_hash = calculate_git_hash(args.file)
         if readable_hash is None:
             return
         hashtheplanet.find_hash(readable_hash)
@@ -217,6 +209,3 @@ def main():
 
     logger.debug("Start computing hashs")
     hashtheplanet.compute_hashs()
-    logger.debug("Retrieving computed hashs")
-    hashtheplanet.show_all_hashs()
-    hashtheplanet.close()

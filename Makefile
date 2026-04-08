@@ -1,6 +1,6 @@
 install:
-	pip install --no-deps -r requirements.txt
-	pip install --no-deps .
+	pip install -r requirements.txt
+	pip install .
 
 test:
 	pip install pytest pytest-cov
@@ -11,4 +11,4 @@ lint:
 	python3 -m pylint hashtheplanet/ tests/
 
 clean:
-	rm dist/*.db
+	rm -rf dist/*_hash_files.json

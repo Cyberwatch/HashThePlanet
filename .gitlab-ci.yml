@@ -1,0 +1,110 @@
+stages:
+  - lint
+  - test
+  - release
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+
+.python_setup: &python_setup
+  before_script:
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt
+    - pip install .
+
+cache:
+  key: pip-cache
+  paths:
+    - .pip-cache/
+
+# ---------- Lint ----------
+
+pylint:
+  stage: lint
+  image: python:3.12
+  <<: *python_setup
+  script:
+    - pip install pylint pytest
+    - pylint --rcfile=.pylintrc hashtheplanet tests
+
+# ---------- Tests ----------
+
+.test_template: &test_template
+  stage: test
+  <<: *python_setup
+  script:
+    - pip install pytest pytest-cov
+    - pytest --cov=hashtheplanet tests/
+  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
+
+test:python3.10:
+  <<: *test_template
+  image: python:3.10
+
+test:python3.11:
+  <<: *test_template
+  image: python:3.11
+
+test:python3.12:
+  <<: *test_template
+  image: python:3.12
+
+test:python3.13:
+  <<: *test_template
+  image: python:3.13
+
+integration:
+  stage: test
+  image: python:3.12
+  <<: *python_setup
+  script:
+    - echo '{"git":{"targets":["https://github.com/jashkenas/underscore.git"]},"npm":{"targets":["underscore"]}}' > tech.json
+    - hashtheplanet --input ./tech.json --json-dir output/
+    - ls -la output/
+  artifacts:
+    paths:
+      - output/
+    expire_in: 1 week
+
+# ---------- Release ----------
+
+generate_hash_files:
+  stage: release
+  image: python:3.12
+  <<: *python_setup
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - src/tech_list.json
+    - if: $CI_PIPELINE_SOURCE == "web"
+  cache:
+    key: git-repos
+    paths:
+      - .git-cache/
+  script:
+    - |
+      if [ "$OVERWRITE" != "true" ]; then
+        # Download previous JSON files from the latest release if they exist
+        apt-get update -qq && apt-get install -y -qq curl jq > /dev/null
+        RELEASE_URL=$(curl -s --header "PRIVATE-TOKEN: $CI_JOB_TOKEN"
+          "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/releases/permalink/latest" |
+          jq -r '.assets.links[]? | select(.name | endswith("_hash_files.json")) | .direct_asset_url' 2>/dev/null || true)
+        mkdir -p dist/
+        for url in $RELEASE_URL; do
+          curl -s --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" -o "dist/$(basename $url)" "$url" || true
+        done
+      fi
+    - mkdir -p dist/
+    - hashtheplanet --input src/tech_list.json --json-dir dist/ --cache-dir .git-cache --workers 4
+  artifacts:
+    paths:
+      - dist/*_hash_files.json
+    expire_in: never
+  release:
+    tag_name: "${CI_COMMIT_SHORT_SHA}-$(date +%Y-%m-%d)"
+    description: "Hash files release"
+    assets:
+      links:
+        - name: "Hash files"
+          url: "${CI_PROJECT_URL}/-/jobs/${CI_JOB_ID}/artifacts/download"

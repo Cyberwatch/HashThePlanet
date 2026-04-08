@@ -13,7 +13,7 @@ from loguru import logger
 import requests
 
 # project imports
-from hashtheplanet.sql.db_connector import Hash
+from hashtheplanet.utils.hash_utils import hash_bytes
 from hashtheplanet.resources.resource import Resource
 from hashtheplanet.config.extensions_list import EXCLUDED_FILE_PATTERN
 
@@ -63,32 +63,13 @@ class NpmResource(Resource):
 
                 if file is None:
                     continue
-                files.append((member.path, Hash.hash_bytes(file.read())))
+                files.append((member.path, hash_bytes(file.read())))
         return files
 
-    def _save_hashes(
-        self,
-        session_scope,
-        files_info: Dict[VersionName, List[FileMetadata]],
-        versions: List[VersionName],
-        npm_module_name: str
-    ):
+    def compute_hashes(self, target: str, builder=None):
         """
-        This method saves all files with their hash & their versions to the database.
-        """
-        with session_scope() as session:
-            self._database.insert_versions(session, npm_module_name, versions)
-            for version, files in files_info.items():
-                for (file_path, file_hash) in files:
-                    match_ext = re.search(EXCLUDED_FILE_PATTERN, file_path)
-                    if not match_ext:
-                        self._database.insert_file(session, npm_module_name, file_path)
-                        self._database.insert_or_update_hash(session, file_path, file_hash, npm_module_name, [version])
-
-    def compute_hashes(self, session_scope, target: str):
-        """
-        This method downloads all versions of an npm module and stores all the versions with their associated files
-        and hashes and stores them in the database.
+        This method downloads all versions of an npm module and stores all the versions with their
+        associated files and hashes in the JsonBuilder.
         """
         versions = self.retrieve_versions(target)
         files_info: Dict[VersionName, List[FileMetadata]] = {}
@@ -101,4 +82,11 @@ class NpmResource(Resource):
                 self.save_tar_to_disk(file_path, target, version)
                 files_info[version] = self.extract_hashes_from_tar(file_path)
 
-        self._save_hashes(session_scope, files_info, versions, target)
+        if builder is not None:
+            entries = []
+            for version, files in files_info.items():
+                for (file_path, file_hash) in files:
+                    match_ext = re.search(EXCLUDED_FILE_PATTERN, file_path)
+                    if not match_ext:
+                        entries.append((file_path, file_hash, version))
+            builder.add_entries_bulk(target, entries)

@@ -6,20 +6,16 @@ from importlib import import_module
 from loguru import logger
 
 from hashtheplanet.resources.resource import Resource
-from hashtheplanet.sql.db_connector import DbConnector
 
 
 class Executor(): # pylint: disable=too-few-public-methods
     """
-    This module handles npm resources to generate hashes.
+    This class dispatches hash computation to the appropriate resource.
     """
-    def __init__(self, database: DbConnector, session_scope):
-        self._database = database
-        self._session_scope = session_scope
-
-    def execute(self, resource_name: str, target: str):
+    def execute(self, resource_name: str, target: str, **kwargs):
         """
         This method executes a resource to compute hashes.
+        Extra kwargs (builder, cache_dir) are forwarded to compute_hashes.
         """
         resource_path = f"{resource_name}_resource"
         resource_class_name = f"{resource_name.title()}Resource"
@@ -30,5 +26,5 @@ class Executor(): # pylint: disable=too-few-public-methods
             logger.error(f"[!] Could not find module {resource_path}")
             return
 
-        resource_instance: Resource = getattr(module, resource_class_name)(self._database)
-        resource_instance.compute_hashes(self._session_scope, target)
+        resource_instance: Resource = getattr(module, resource_class_name)()
+        resource_instance.compute_hashes(target, **kwargs)

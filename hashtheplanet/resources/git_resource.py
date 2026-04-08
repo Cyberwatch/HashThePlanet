@@ -1,22 +1,16 @@
 """
-This module handles Git resources to generate hashs.
+This module handles Git resources to generate hashes.
 """
 # standard imports
 import os
 import re
 import subprocess
-import tempfile
-from stat import S_ISDIR
-from typing import List, Tuple
+from typing import List, Optional, Set, Tuple
 
 # third party imports
-from git import GitCommandError, Repo
-from git.objects.commit import Commit
-from git.refs.tag import Tag
 from loguru import logger
 
 # project imports
-from hashtheplanet.sql.db_connector import Hash
 from hashtheplanet.resources.resource import Resource
 from hashtheplanet.config.extensions_list import EXCLUDED_FILE_PATTERN
 
@@ -25,129 +19,150 @@ FilePath = str
 BlobHash = str
 TagName = str
 FileHash = str
-GitFileMetadata = Tuple[FilePath, TagName, BlobHash]
 FileMetadata = Tuple[FilePath, TagName, FileHash]
+
+# SHA1 of an empty blob in git
+EMPTY_BLOB_SHA1 = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+
 
 class GitResource(Resource):
     """
-    This class implements methods to generate hashs from Git resources.
+    This class implements methods to generate hashes from Git resources.
     """
     name = "git"
 
     @staticmethod
-    def clone_repository(url, path) -> Repo:
+    def clone_or_fetch(url: str, path: str):
         """
-        This method tries to clone the repository from the provided url.
+        Clone the repository if it doesn't exist, otherwise fetch new tags.
         """
-        logger.debug(f"Cloning repository {url} ...")
-        return Repo.clone_from(url, path, bare=True)
+        if os.path.isdir(path) and os.path.isdir(os.path.join(path, "objects")):
+            logger.debug(f"Fetching updates for {url} ...")
+            subprocess.check_call(
+                ['git', 'fetch', '--tags', '--force', 'origin'],
+                cwd=path,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        else:
+            logger.debug(f"Cloning repository {url} ...")
+            subprocess.check_call(
+                ['git', 'clone', '--bare', url, path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
 
     @staticmethod
-    def get_all_files_from_commit(commit: Commit) -> List[Tuple[FilePath, BlobHash]]:
+    def get_tags(repo_path: str) -> List[str]:
         """
-        This method retrieves all files with their blob hash in a commit.
+        Retrieve all tag names from a bare repository.
         """
-        file_list = []
+        output = subprocess.check_output(
+            ['git', 'tag', '-l'],
+            cwd=repo_path
+        ).decode('utf-8', errors='replace')
+        return [tag.strip() for tag in output.splitlines() if tag.strip()]
 
-        for blob in commit.tree.traverse():
-            if S_ISDIR(blob.mode):
+    @staticmethod
+    def ls_tree(repo_path: str, tag_name: str) -> List[Tuple[FilePath, BlobHash]]:
+        """
+        Get all (file_path, blob_sha1) pairs for a given tag using git ls-tree -r.
+        This is much faster than traversing the tree with GitPython.
+        """
+        try:
+            output = subprocess.check_output(
+                ['git', 'ls-tree', '-r', tag_name],
+                cwd=repo_path,
+                stderr=subprocess.DEVNULL
+            ).decode('utf-8', errors='replace')
+        except subprocess.CalledProcessError:
+            logger.warning(f"Failed to list tree for tag {tag_name}")
+            return []
+
+        files = []
+        for line in output.splitlines():
+            if not line:
                 continue
-            match_ext = re.search(EXCLUDED_FILE_PATTERN, blob.path)
-            if not match_ext:
-                file_list.append((blob.path, blob.hexsha))
-        return file_list
-
-    @staticmethod
-    def _hash_files(
-        files: List[GitFileMetadata],
-        repo_dir_path: str
-    ) -> List[FileMetadata]:
-        """
-        This method calculates the SHA256 hashes of input files.
-        To do so, it reads first the content by using the file blob hash with the command `git cat-file -p [blob hash]`,
-        then it calculates the hash.
-        """
-        files_info: List[Tuple[FilePath, TagName, FilePath]] = []
-        current_dir = os.getcwd()
-        os.chdir(repo_dir_path)
-
-        for (file_path, tag_name, blob_hash) in files:
+            # Format: "<mode> <type> <sha1>\t<path>"
             try:
-                # We need to use a subprocess and not the GitPython library
-                # because when we execute "git cat-file -p [blob]" with it, it always removes the \n from the last line.
-                # Because of that when we calculate the hash of a file, it may change if it has originally a \n or not.
-                # (https://github.com/gitpython-developers/GitPython/blob/main/git/cmd.py#L947)
-                file_content = subprocess.check_output(
-                    ['git', 'cat-file', '-p', blob_hash],
-                    shell=False,
-                )
-                if len(file_content) == 0:
-                    continue
-                file_hash = Hash.hash_bytes(file_content)
-                files_info.append((file_path, tag_name, file_hash))
-            except (ValueError, subprocess.CalledProcessError) as exception:
-                logger.error(exception)
-        os.chdir(current_dir)
-        return files_info
+                meta, file_path = line.split('\t', 1)
+                parts = meta.split(' ')
+                blob_sha1 = parts[2]
+            except (ValueError, IndexError):
+                continue
 
+            # Skip empty blobs
+            if blob_sha1 == EMPTY_BLOB_SHA1:
+                continue
 
-    def _get_blob_hashes(self, tags : List[Tag]) -> List[FileMetadata]:
+            # Skip excluded file patterns
+            if re.search(EXCLUDED_FILE_PATTERN, file_path):
+                continue
 
-        files: List[GitFileMetadata] = []
-
-        for tag in tags:
-            tag_name = tag.name
-            commit = tag.commit
-
-            for item in commit.tree.traverse():
-                if item.type == 'blob':
-                    file_path = item.path
-                    file_hash = item.hexsha
-                    match_ext = re.search(EXCLUDED_FILE_PATTERN, file_path)
-                    if not match_ext:
-                        files.append((file_path, tag_name, file_hash))
+            files.append((file_path, blob_sha1))
 
         return files
 
-    def _save_hashes(
-        self,
-        session_scope,
-        files_info: List[FileMetadata],
-        technology: str
-    ):
+    def _get_blob_hashes(self, repo_path: str, tags: List[str],
+                         skip_tags: Optional[Set[str]] = None) -> List[FileMetadata]:
         """
-        This method saves all files with their hash & their versions to the database.
+        Retrieve all (file_path, tag_name, blob_sha1) for all tags.
+        Uses git ls-tree -r for each tag (single subprocess call per tag).
         """
-        with session_scope() as session:
-            file_record = {}
+        files: List[FileMetadata] = []
+        skip = skip_tags or set()
 
-            for (file_path, tag_name, file_hash) in files_info:
+        for tag_name in tags:
+            if tag_name in skip:
+                continue
 
-                self._database.insert_or_update_hash(session, file_path, file_hash, technology, [tag_name])
-                file_record[file_path] = (tag_name, file_hash)
+            for file_path, blob_sha1 in self.ls_tree(repo_path, tag_name):
+                files.append((file_path, tag_name, blob_sha1))
 
-    def compute_hashes(self, session_scope, target: str):
+        return files
+
+    def compute_hashes(self, target: str, cache_dir: str = None, builder=None):
         """
-        This method clones the repository from url, retrieves tags, retrieve the hashes, and then stores the tags
-        & files information in the database.
+        Clone/fetch the repository, retrieve tags, compute hashes, and store them in the builder.
         """
         technology = target.split('.git')[0].split('/')[-1]
-        files: List[GitFileMetadata] = []
 
-        with tempfile.TemporaryDirectory() as tmp_dir_name:
-            try:
-                repo = self.clone_repository(target, tmp_dir_name)
-            except GitCommandError as error:
-                logger.warning(f"Error while cloning repository on {target}: {error}")
-                return
+        if cache_dir:
+            repo_path = os.path.join(cache_dir, technology + ".git")
+        else:
+            repo_path = None
 
-            logger.info("Retrieving tags ...")
-            tags = repo.tags.copy()
+        try:
+            if cache_dir:
+                os.makedirs(cache_dir, exist_ok=True)
+                self.clone_or_fetch(target, repo_path)
+            else:
+                import tempfile
+                self._tmp_dir = tempfile.mkdtemp()
+                repo_path = self._tmp_dir
+                subprocess.check_call(
+                    ['git', 'clone', '--bare', target, repo_path],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+        except subprocess.CalledProcessError as error:
+            logger.warning(f"Error while cloning repository on {target}: {error}")
+            return
 
-            logger.info("Retrieving the hashes from the Git repository...")
-            files += self._get_blob_hashes(tags)
+        logger.info("Retrieving tags ...")
+        tags = self.get_tags(repo_path)
 
-            logger.info("== DONE ! ==")
+        logger.info(f"Retrieving the hashes from the Git repository ({len(tags)} tags)...")
+        files = self._get_blob_hashes(repo_path, tags)
 
-        logger.info("Saving hashes ...")
-        self._save_hashes(session_scope, files, technology)
+        logger.info("== DONE ! ==")
+
+        if builder is not None:
+            logger.info("Saving hashes to JSON builder ...")
+            entries = [(file_path, file_hash, tag_name) for file_path, tag_name, file_hash in files]
+            builder.add_entries_bulk(technology, entries)
+
+        # Clean up temp dir if we created one
+        if not cache_dir and hasattr(self, '_tmp_dir'):
+            import shutil
+            shutil.rmtree(self._tmp_dir, ignore_errors=True)

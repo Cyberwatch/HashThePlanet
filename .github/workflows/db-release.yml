@@ -1,4 +1,4 @@
-# This workflow updates the database and creates a release of it everyday
+# This workflow updates the hash files and creates a release
 
 name: Release Workflow
 on:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       overwrite:
-        description: Create a new release without using the database from the last one
+        description: Create a new release without using data from the last one
         type: boolean
         required: true
         default: "false"
@@ -18,12 +18,17 @@ on:
       - 'src/tech_list.json'
 
 jobs:
-  db-release:
-    name: "Database Release"
+  json-release:
+    name: "JSON Hash Files Release"
     runs-on: "ubuntu-latest"
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       - name: Get current date
         id: date
@@ -32,42 +37,50 @@ jobs:
       - name: Install requirements
         run: |
           python -m pip install --upgrade pip
-          pip install --no-deps -r requirements.txt
-          pip install --no-deps .
-          pip install pylint pytest
+          pip install -r requirements.txt
+          pip install .
 
-      - name: "Download the latest published database"
-        if: ${{ github.event.inputs.overwrite == 'false' }}
-        uses: "robinraju/release-downloader@v1.2"
+      - name: Restore git repo cache
+        if: ${{ github.event.inputs.overwrite != 'true' }}
+        uses: actions/cache@v4
+        with:
+          path: .git-cache
+          key: git-repos-${{ hashFiles('src/tech_list.json') }}
+          restore-keys: |
+            git-repos-
+
+      - name: "Download previous JSON files"
+        if: ${{ github.event.inputs.overwrite != 'true' }}
+        uses: "robinraju/release-downloader@v1.11"
         continue-on-error: true
         with:
           repository: "Cyberwatch/HashThePlanet"
           latest: true
-          fileName: "hashtheplanet.db"
+          fileName: "*_hash_files.json"
           tarBall: false
           zipBall: false
           out-file-path: "dist/"
 
-      - name: "Update the database"
+      - name: "Generate JSON hash files"
         run: |
-          hashtheplanet --input src/tech_list.json --output dist/hashtheplanet.db
+          hashtheplanet --input src/tech_list.json --json-dir dist/ --cache-dir .git-cache --workers 4
 
-      - name: "Publish the daily release with the tag: ${{ steps.date.outputs.date }}"
+      - name: "Publish the release with the tag: ${{ steps.date.outputs.date }}"
         uses: "marvinpinto/action-automatic-releases@latest"
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           automatic_release_tag: "${{ steps.date.outputs.date }}"
           prerelease: false
-          title: "Database release: ${{ steps.date.outputs.date }}"
+          title: "Hash files release: ${{ steps.date.outputs.date }}"
           files: |
-            dist/hashtheplanet.db
+            dist/*_hash_files.json
 
-      - name: "Publish the daily release with the tag: latest"
+      - name: "Publish the release with the tag: latest"
         uses: "marvinpinto/action-automatic-releases@latest"
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           automatic_release_tag: "latest"
           prerelease: false
-          title: "Database release: Latest"
+          title: "Hash files release: Latest"
           files: |
-            dist/hashtheplanet.db
+            dist/*_hash_files.json
