@@ -183,6 +183,61 @@ def test_incremental_update():
         assert data["b.css"]["h2"] == ["1.0"]
 
 
+def test_discrimination_score():
+    """Score is the hash count divided by the largest version group."""
+    builder = JsonBuilder()
+    # High discrimination: 3 hashes, max group = 2
+    builder.add_entry("wp", "good.css", "h1", "1.0")
+    builder.add_entry("wp", "good.css", "h1", "1.1")
+    builder.add_entry("wp", "good.css", "h2", "2.0")
+    builder.add_entry("wp", "good.css", "h3", "3.0")
+
+    # Low discrimination: 1 hash, 100 versions
+    for i in range(100):
+        builder.add_entry("wp", "bad.css", "h_same", f"{i}.0")
+
+    scores = builder.compute_discrimination_scores("wp")
+    assert scores["good.css"] == 3 / 2  # 1.5
+    assert scores["bad.css"] == 1 / 100  # 0.01
+
+
+def test_filter_low_discrimination():
+    """Files scoring below the threshold are dropped."""
+    builder = JsonBuilder()
+
+    # Discriminating file: 3 hashes, max group = 1
+    builder.add_entry("wp", "good.css", "h1", "1.0")
+    builder.add_entry("wp", "good.css", "h2", "2.0")
+    builder.add_entry("wp", "good.css", "h3", "3.0")
+
+    # Non-discriminating file: 1 hash, 50 versions
+    for i in range(50):
+        builder.add_entry("wp", "bad.css", "h_same", f"{i}.0")
+
+    builder.filter_low_discrimination_files(threshold=0.05)
+
+    data = builder.get_technology_data("wp")
+    assert "good.css" in data
+    assert "bad.css" not in data
+
+
+def test_filter_preserves_good_files():
+    """Files scoring above the threshold are kept."""
+    builder = JsonBuilder()
+
+    # All files are discriminating
+    builder.add_entry("wp", "a.css", "h1", "1.0")
+    builder.add_entry("wp", "a.css", "h2", "2.0")
+    builder.add_entry("wp", "b.css", "h3", "1.0")
+    builder.add_entry("wp", "b.css", "h4", "2.0")
+
+    builder.filter_low_discrimination_files(threshold=0.05)
+
+    data = builder.get_technology_data("wp")
+    assert "a.css" in data
+    assert "b.css" in data
+
+
 def test_save_deduplicates_versions():
     """Test that duplicate versions are deduplicated on save."""
     builder = JsonBuilder()

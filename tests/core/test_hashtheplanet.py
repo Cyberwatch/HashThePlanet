@@ -30,6 +30,15 @@ def test_htp_constructor():
     assert htp._json_dir == "/tmp/json"
     assert htp._cache_dir == "/tmp/cache"
     assert htp._max_workers == 2
+    assert htp._discrimination_threshold == 0.05
+
+
+def test_htp_constructor_custom_threshold():
+    """
+    The discrimination threshold can be overridden.
+    """
+    htp = HashThePlanet("input.json", discrimination_threshold=0.1)
+    assert htp._discrimination_threshold == 0.1
 
 
 def test_compute_hashes():
