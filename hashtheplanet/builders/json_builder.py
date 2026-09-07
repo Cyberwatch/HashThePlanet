@@ -6,6 +6,14 @@ import os
 from collections import defaultdict
 from typing import Dict, List
 
+from hashtheplanet.utils.version_utils import (
+    collect_all_versions,
+    compress_to_ranges,
+    expand_ranges,
+)
+
+FORMAT_VERSION = 2
+
 
 class JsonBuilder:
     """
@@ -57,21 +65,37 @@ class JsonBuilder:
     def save_json(self, output_dir: str):
         """
         Save one JSON file per technology in the output directory.
-        Format: {file_path: {hash: [versions]}}
+        Format v2: {_meta: {format_version, sorted_versions}, files: {file_path: {hash: [ranges]}}}
         """
         os.makedirs(output_dir, exist_ok=True)
 
         for technology, tech_data in self._data.items():
             output_path = os.path.join(output_dir, f"{technology.lower()}_hash_files.json")
-            serializable = {
-                fp: dict(hashes) for fp, hashes in tech_data.items()
+
+            sorted_versions = collect_all_versions(tech_data)
+
+            files_data = {}
+            for fp, hashes in tech_data.items():
+                files_data[fp] = {}
+                for hash_value, versions in hashes.items():
+                    deduped = list(dict.fromkeys(versions))
+                    files_data[fp][hash_value] = compress_to_ranges(deduped, sorted_versions)
+
+            output = {
+                "_meta": {
+                    "format_version": FORMAT_VERSION,
+                    "sorted_versions": sorted_versions,
+                },
+                "files": files_data,
             }
+
             with open(output_path, "w", encoding="utf-8") as file_fp:
-                json.dump(serializable, file_fp, indent=4)
+                json.dump(output, file_fp, indent=4)
 
     def load_json(self, output_dir: str):
         """
         Load existing JSON files from the output directory to support incremental updates.
+        Supports both v2 format (with ranges) and legacy format.
         """
         if not os.path.isdir(output_dir):
             return
@@ -89,6 +113,15 @@ class JsonBuilder:
             if technology not in self._data:
                 self._data[technology] = defaultdict(lambda: defaultdict(list))
 
-            for file_path, hash_dict in data.items():
-                for hash_value, versions in hash_dict.items():
-                    self._data[technology][file_path][hash_value].extend(versions)
+            if "_meta" in data and "files" in data:
+                # v2 format: expand ranges back to full version lists
+                sorted_versions = data["_meta"]["sorted_versions"]
+                for file_path, hash_dict in data["files"].items():
+                    for hash_value, range_list in hash_dict.items():
+                        versions = expand_ranges(range_list, sorted_versions)
+                        self._data[technology][file_path][hash_value].extend(versions)
+            else:
+                # Legacy format: direct version lists
+                for file_path, hash_dict in data.items():
+                    for hash_value, versions in hash_dict.items():
+                        self._data[technology][file_path][hash_value].extend(versions)
