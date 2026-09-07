@@ -6,6 +6,8 @@ import os
 from collections import defaultdict
 from typing import Dict, List
 
+from loguru import logger
+
 from hashtheplanet.utils.version_utils import (
     collect_all_versions,
     compress_to_ranges,
@@ -61,6 +63,37 @@ class JsonBuilder:
             for file_path, hash_dict in tech_data.items():
                 for hash_value, versions in hash_dict.items():
                     self._data[technology][file_path][hash_value].extend(versions)
+
+    def compute_discrimination_scores(self, technology: str) -> Dict[str, float]:
+        """
+        For each file_path in the technology, compute a discrimination score:
+          score = num_distinct_hashes / max(len(version_list) for each hash)
+
+        Higher score = more discriminating file (many hashes, small version groups).
+        Lower score = less useful file (few hashes, large version groups).
+        """
+        tech_data = self._data.get(technology, {})
+        scores = {}
+        for file_path, hash_dict in tech_data.items():
+            num_hashes = len(hash_dict)
+            max_group_size = max((len(v) for v in hash_dict.values()), default=0)
+            scores[file_path] = num_hashes / max_group_size if max_group_size > 0 else 0
+        return scores
+
+    def filter_low_discrimination_files(self, threshold: float = 0.05):
+        """
+        Remove files with discrimination score below threshold, for all technologies.
+        """
+        for technology in list(self._data.keys()):
+            scores = self.compute_discrimination_scores(technology)
+            to_remove = [fp for fp, score in scores.items() if score < threshold]
+            if to_remove:
+                for fp in to_remove:
+                    del self._data[technology][fp]
+                logger.info(
+                    f"{technology}: removed {len(to_remove)} low-discrimination files "
+                    f"(threshold={threshold}), {len(self._data[technology])} files remaining"
+                )
 
     def save_json(self, output_dir: str):
         """

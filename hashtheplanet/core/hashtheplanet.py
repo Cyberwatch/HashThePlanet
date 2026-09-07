@@ -24,7 +24,8 @@ class HashThePlanet():
     The HashThePlanet class
     """
     def __init__(self, input_file: str, json_dir: str = "dist",
-                 cache_dir: str = None, max_workers: int = 4):
+                 cache_dir: str = None, max_workers: int = 4,
+                 discrimination_threshold: float = 0.05):
         """
         Initialisation requires an input filename (json) and an output directory.
         """
@@ -32,6 +33,7 @@ class HashThePlanet():
         self._json_dir = json_dir
         self._cache_dir = cache_dir
         self._max_workers = max_workers
+        self._discrimination_threshold = discrimination_threshold
         self._config = Config()
 
     def _compute_single_target(self, resource_name: str, target: str, builder: JsonBuilder):
@@ -94,6 +96,9 @@ class HashThePlanet():
                 except Exception as error:
                     logger.error(f"Error processing {target}: {error}")
 
+        if self._discrimination_threshold > 0:
+            builder.filter_low_discrimination_files(self._discrimination_threshold)
+
         builder.save_json(self._json_dir)
         logger.info(f"JSON files saved to {self._json_dir}")
         logger.info("Computing done")
@@ -151,6 +156,13 @@ def main():
     )
 
     parser.add_argument(
+        "--discrimination-threshold",
+        type=float,
+        default=0.05,
+        help="Remove files with discrimination score below this threshold (0 to disable, default: 0.05)"
+    )
+
+    parser.add_argument(
         "--color",
         action="store_true",
         help="Colorize output"
@@ -194,7 +206,8 @@ def main():
         args.input,
         json_dir=args.json_dir,
         cache_dir=args.cache_dir,
-        max_workers=args.workers
+        max_workers=args.workers,
+        discrimination_threshold=args.discrimination_threshold,
     )
 
     if args.file is not None:
