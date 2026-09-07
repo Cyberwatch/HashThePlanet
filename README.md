@@ -136,9 +136,13 @@ Version ordering handles the tagging schemes used by the supported projects: `v`
 levels (`2.4.8-p1`), Joomla underscores (`2.5.0_RC1`) and four-segment versions (`1.5.1.1`).
 Numeric segments are compared as integers, so `2.0.10` sorts after `2.0.2`.
 
-Compared to a flat `{ file_path: { git_blob_sha1: [versions] } }` mapping, this cuts the total
-output from 190 MB to 40 MB (-79% uncompressed, -20% once gzipped) at the cost of an expansion step
-when loading.
+Compared to a flat `{ file_path: { git_blob_sha1: [versions] } }` mapping written the same way,
+this cuts the total output from 92 MB to 24 MB (-74% uncompressed, -9% once gzipped) at the cost of
+an expansion step when loading.
+
+The files are written with compact separators and no indentation, since they are consumed by tools
+rather than read by hand. Pretty-printing them would add 40% to their size for no benefit. Use
+`python3 -m json.tool` if you need to inspect one.
 
 ### Reading the files
 
