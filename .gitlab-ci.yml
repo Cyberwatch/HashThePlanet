@@ -21,7 +21,7 @@ cache:
 
 pylint:
   stage: lint
-  image: python:3.12
+  image: python:3.14
   <<: *python_setup
   script:
     - pip install pylint pytest
@@ -29,33 +29,18 @@ pylint:
 
 # ---------- Tests ----------
 
-.test_template: &test_template
+test:
   stage: test
+  image: python:3.14
   <<: *python_setup
   script:
     - pip install pytest pytest-cov
     - pytest --cov=hashtheplanet tests/
   coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
 
-test:python3.10:
-  <<: *test_template
-  image: python:3.10
-
-test:python3.11:
-  <<: *test_template
-  image: python:3.11
-
-test:python3.12:
-  <<: *test_template
-  image: python:3.12
-
-test:python3.13:
-  <<: *test_template
-  image: python:3.13
-
 integration:
   stage: test
-  image: python:3.12
+  image: python:3.14
   <<: *python_setup
   script:
     - echo '{"git":{"targets":["https://github.com/jashkenas/underscore.git"]},"npm":{"targets":["underscore"]}}' > tech.json
@@ -70,7 +55,7 @@ integration:
 
 generate_hash_files:
   stage: release
-  image: python:3.12
+  image: python:3.14
   <<: *python_setup
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
