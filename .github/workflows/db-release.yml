@@ -21,12 +21,14 @@ jobs:
   json-release:
     name: "JSON Hash Files Release"
     runs-on: "ubuntu-latest"
+    permissions:
+      contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.14"
 
@@ -42,7 +44,7 @@ jobs:
 
       - name: Restore git repo cache
         if: ${{ github.event.inputs.overwrite != 'true' }}
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .git-cache
           key: git-repos-${{ hashFiles('src/tech_list.json') }}
@@ -51,7 +53,7 @@ jobs:
 
       - name: "Download previous JSON files"
         if: ${{ github.event.inputs.overwrite != 'true' }}
-        uses: "robinraju/release-downloader@v1.11"
+        uses: "robinraju/release-downloader@v1.13"
         continue-on-error: true
         with:
           repository: "Cyberwatch/HashThePlanet"
@@ -66,21 +68,26 @@ jobs:
           hashtheplanet --input src/tech_list.json --json-dir dist/ --cache-dir .git-cache --workers 4
 
       - name: "Publish the release with the tag: ${{ steps.date.outputs.date }}"
-        uses: "marvinpinto/action-automatic-releases@latest"
+        uses: "softprops/action-gh-release@v3"
         with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          automatic_release_tag: "${{ steps.date.outputs.date }}"
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag_name: "${{ steps.date.outputs.date }}"
           prerelease: false
-          title: "Hash files release: ${{ steps.date.outputs.date }}"
+          name: "Hash files release: ${{ steps.date.outputs.date }}"
+          generate_release_notes: true
+          fail_on_unmatched_files: true
           files: |
             dist/*_hash_files.json
 
+      # Updates the "latest" release (notes and assets) without moving the git tag.
       - name: "Publish the release with the tag: latest"
-        uses: "marvinpinto/action-automatic-releases@latest"
+        uses: "softprops/action-gh-release@v3"
         with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          automatic_release_tag: "latest"
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag_name: "latest"
           prerelease: false
-          title: "Hash files release: Latest"
+          name: "Hash files release: Latest"
+          make_latest: true
+          fail_on_unmatched_files: true
           files: |
             dist/*_hash_files.json
