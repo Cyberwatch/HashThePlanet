@@ -22,10 +22,6 @@ jobs=1
 # Pickle collected data for later comparisons.
 persistent=yes
 
-# When enabled, pylint would attempt to guess common misconfiguration and emit
-# user-friendly hints instead of false-positive error messages.
-suggestion-mode=yes
-
 
 [MESSAGES CONTROL]
 
@@ -268,5 +264,5 @@ valid-metaclass-classmethod-first-arg=cls
 
 # Exceptions that will emit a warning when being caught. Defaults to
 # "BaseException, Exception".
-overgeneral-exceptions=BaseException,
-                       Exception
+overgeneral-exceptions=builtins.BaseException,
+                       builtins.Exception

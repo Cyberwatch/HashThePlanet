@@ -3,7 +3,7 @@ The main module for HashThePlanet
 """
 # standard imports
 import argparse
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from json import JSONDecodeError
 import os
 import sys
@@ -14,6 +14,7 @@ from loguru import logger
 # project imports
 from hashtheplanet.builders.json_builder import JsonBuilder
 from hashtheplanet.config.config import Config
+from hashtheplanet.executor.executor import Executor
 from hashtheplanet.utils.hash_utils import calculate_git_hash
 
 HASHTHEPLANET_VERSION = "HashThePlanet 1.0.0"
@@ -40,24 +41,11 @@ class HashThePlanet():
         """
         Compute hashes for a single target (used for parallel execution).
         """
-        from importlib import import_module
-
-        resource_path = f"{resource_name}_resource"
-        resource_class_name = f"{resource_name.title()}Resource"
-
-        try:
-            module = import_module("hashtheplanet.resources." + resource_path)
-        except ImportError:
-            logger.error(f"[!] Could not find module {resource_path}")
-            return
-
-        resource_instance = getattr(module, resource_class_name)()
-
         kwargs = {"builder": builder}
         if resource_name == "git" and self._cache_dir:
             kwargs["cache_dir"] = self._cache_dir
 
-        resource_instance.compute_hashes(target, **kwargs)
+        Executor().execute(resource_name, target, **kwargs)
 
     def compute_hashs(self):
         """
@@ -93,7 +81,8 @@ class HashThePlanet():
                     future.result()
                     builder.merge(target_builder)
                     logger.info(f"Merged results for {target}")
-                except Exception as error:
+                # A single failing target must not abort the whole run.
+                except Exception as error: # pylint: disable=broad-exception-caught
                     logger.error(f"Error processing {target}: {error}")
 
         if self._discrimination_threshold > 0:

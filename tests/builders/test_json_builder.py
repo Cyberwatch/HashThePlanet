@@ -9,6 +9,7 @@ from hashtheplanet.builders.json_builder import JsonBuilder
 
 
 def test_add_entry():
+    """A single entry is stored under its technology, file and hash."""
     builder = JsonBuilder()
     builder.add_entry("WordPress", "wp-admin/css/about.css", "hash1", "4.5")
     builder.add_entry("WordPress", "wp-admin/css/about.css", "hash1", "4.5.1")
@@ -21,6 +22,7 @@ def test_add_entry():
 
 
 def test_add_entries_bulk():
+    """Bulk entries are stored like individual ones."""
     builder = JsonBuilder()
     entries = [
         ("LICENSE", "hash1", "1.0"),
@@ -35,6 +37,7 @@ def test_add_entries_bulk():
 
 
 def test_get_technologies():
+    """get_technologies lists every technology added."""
     builder = JsonBuilder()
     builder.add_entry("WordPress", "a.css", "h1", "1.0")
     builder.add_entry("Drupal", "b.css", "h2", "1.0")
@@ -44,12 +47,14 @@ def test_get_technologies():
 
 
 def test_get_technology_data_empty():
+    """An unknown technology yields no data."""
     builder = JsonBuilder()
     data = builder.get_technology_data("nonexistent")
-    assert data == {}
+    assert not data
 
 
 def test_merge():
+    """Merging combines version lists for the same hash."""
     builder1 = JsonBuilder()
     builder1.add_entry("WordPress", "a.css", "h1", "1.0")
 
@@ -65,6 +70,7 @@ def test_merge():
 
 
 def test_merge_different_technologies():
+    """Merging keeps technologies from both builders."""
     builder1 = JsonBuilder()
     builder1.add_entry("WordPress", "a.css", "h1", "1.0")
 
@@ -87,7 +93,7 @@ def test_save_json_v2_format():
     with tempfile.TemporaryDirectory() as tmp_dir:
         builder.save_json(tmp_dir)
 
-        with open(os.path.join(tmp_dir, "wordpress_hash_files.json")) as f:
+        with open(os.path.join(tmp_dir, "wordpress_hash_files.json"), encoding="utf-8") as f:
             raw = json.load(f)
 
         # Check v2 structure
@@ -142,7 +148,7 @@ def test_load_legacy_format():
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         filepath = os.path.join(tmp_dir, "wordpress_hash_files.json")
-        with open(filepath, "w") as f:
+        with open(filepath, "w", encoding="utf-8") as f:
             json.dump(legacy_data, f)
 
         builder = JsonBuilder()
@@ -154,9 +160,10 @@ def test_load_legacy_format():
 
 
 def test_load_json_nonexistent_dir():
+    """Loading a missing directory is a no-op."""
     builder = JsonBuilder()
     builder.load_json("/nonexistent/path")
-    assert builder.get_technologies() == []
+    assert not builder.get_technologies()
 
 
 def test_incremental_update():
