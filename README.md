@@ -28,7 +28,7 @@ source venv/bin/activate
 make install
 ```
 
-Requires Python >= 3.10 and `git` installed on the system.
+Requires Python >= 3.14 and `git` installed on the system.
 
 ## Usage
 
