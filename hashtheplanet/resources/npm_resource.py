@@ -66,7 +66,7 @@ class NpmResource(Resource):
                 files.append((member.path, hash_bytes(file.read())))
         return files
 
-    def compute_hashes(self, target: str, builder=None):
+    def compute_hashes(self, target: str, builder=None, **kwargs):
         """
         This method downloads all versions of an npm module and stores all the versions with their
         associated files and hashes in the JsonBuilder.

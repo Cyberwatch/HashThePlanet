@@ -57,10 +57,10 @@ class JsonBuilder:
 
     def merge(self, other: "JsonBuilder"):
         """Merge another JsonBuilder's data into this one."""
-        for technology, tech_data in other._data.items():
+        for technology in other.get_technologies():
             if technology not in self._data:
                 self._data[technology] = defaultdict(lambda: defaultdict(list))
-            for file_path, hash_dict in tech_data.items():
+            for file_path, hash_dict in other.get_technology_data(technology).items():
                 for hash_value, versions in hash_dict.items():
                     self._data[technology][file_path][hash_value].extend(versions)
 

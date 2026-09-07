@@ -4,7 +4,9 @@ This module handles Git resources to generate hashes.
 # standard imports
 import os
 import re
+import shutil
 import subprocess
+import tempfile
 from typing import List, Optional, Set, Tuple
 
 # third party imports
@@ -30,6 +32,10 @@ class GitResource(Resource):
     This class implements methods to generate hashes from Git resources.
     """
     name = "git"
+
+    def __init__(self):
+        # Temporary clone directory, only used when no cache_dir is provided.
+        self._tmp_dir: Optional[str] = None
 
     @staticmethod
     def clone_or_fetch(url: str, path: str):
@@ -121,7 +127,7 @@ class GitResource(Resource):
 
         return files
 
-    def compute_hashes(self, target: str, cache_dir: str = None, builder=None):
+    def compute_hashes(self, target: str, cache_dir: str = None, builder=None, **kwargs):
         """
         Clone/fetch the repository, retrieve tags, compute hashes, and store them in the builder.
         """
@@ -137,7 +143,6 @@ class GitResource(Resource):
                 os.makedirs(cache_dir, exist_ok=True)
                 self.clone_or_fetch(target, repo_path)
             else:
-                import tempfile
                 self._tmp_dir = tempfile.mkdtemp()
                 repo_path = self._tmp_dir
                 subprocess.check_call(
@@ -163,6 +168,6 @@ class GitResource(Resource):
             builder.add_entries_bulk(technology, entries)
 
         # Clean up temp dir if we created one
-        if not cache_dir and hasattr(self, '_tmp_dir'):
-            import shutil
+        if not cache_dir and self._tmp_dir:
             shutil.rmtree(self._tmp_dir, ignore_errors=True)
+            self._tmp_dir = None
