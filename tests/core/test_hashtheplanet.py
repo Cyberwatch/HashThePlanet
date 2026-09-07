@@ -89,10 +89,10 @@ def test_compute_hashes():
 
 def test_find_hash():
     """
-    Test find_hash searches in JSON files.
+    Test find_hash searches in JSON files (legacy format).
     """
     with tempfile.TemporaryDirectory() as tmp_dir:
-        # Create a test JSON file
+        # Create a legacy format test JSON file
         data = {
             "wp-admin/css/about.css": {
                 "abc123": ["4.5", "4.5.1"],
@@ -112,6 +112,37 @@ def test_find_hash():
         # Not found
         result = htp.find_hash("nonexistent")
         assert result == (None, None)
+
+
+def test_find_hash_v2_format():
+    """
+    Test find_hash works with v2 JSON format (with ranges).
+    """
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        data = {
+            "_meta": {
+                "format_version": 2,
+                "sorted_versions": ["4.5", "4.5.1", "4.6"]
+            },
+            "files": {
+                "wp-admin/css/about.css": {
+                    "abc123": ["4.5-4.5.1"],
+                    "def456": ["4.6"]
+                }
+            }
+        }
+        with open(os.path.join(tmp_dir, "wordpress_hash_files.json"), "w") as f:
+            json.dump(data, f)
+
+        htp = HashThePlanet("input.json", json_dir=tmp_dir)
+
+        result = htp.find_hash("abc123")
+        assert result[0] == "wordpress"
+        assert sorted(result[1]) == ["4.5", "4.5.1"]
+
+        result = htp.find_hash("def456")
+        assert result[0] == "wordpress"
+        assert result[1] == ["4.6"]
 
 
 def test_main():

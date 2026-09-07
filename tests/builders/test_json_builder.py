@@ -76,7 +76,37 @@ def test_merge_different_technologies():
     assert set(builder1.get_technologies()) == {"WordPress", "Drupal"}
 
 
-def test_save_and_load_json():
+def test_save_json_v2_format():
+    """Verify that save_json writes the v2 format with _meta and ranges."""
+    builder = JsonBuilder()
+    builder.add_entry("wordpress", "wp-admin/css/about.css", "hash1", "4.5")
+    builder.add_entry("wordpress", "wp-admin/css/about.css", "hash1", "4.5.1")
+    builder.add_entry("wordpress", "wp-admin/css/about.css", "hash1", "4.6")
+    builder.add_entry("wordpress", "wp-admin/css/about.css", "hash2", "5.0")
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        builder.save_json(tmp_dir)
+
+        with open(os.path.join(tmp_dir, "wordpress_hash_files.json")) as f:
+            raw = json.load(f)
+
+        # Check v2 structure
+        assert "_meta" in raw
+        assert raw["_meta"]["format_version"] == 2
+        assert "sorted_versions" in raw["_meta"]
+        assert "files" in raw
+
+        # Versions should be sorted
+        assert raw["_meta"]["sorted_versions"] == ["4.5", "4.5.1", "4.6", "5.0"]
+
+        # Contiguous versions should be compressed to ranges
+        file_data = raw["files"]["wp-admin/css/about.css"]
+        assert file_data["hash1"] == ["4.5-4.6"]
+        assert file_data["hash2"] == ["5.0"]
+
+
+def test_save_and_load_roundtrip():
+    """Test that save then load preserves data."""
     builder = JsonBuilder()
     builder.add_entry("wordpress", "wp-admin/css/about.css", "hash1", "4.5")
     builder.add_entry("wordpress", "wp-admin/css/about.css", "hash1", "4.5.1")
@@ -86,23 +116,41 @@ def test_save_and_load_json():
     with tempfile.TemporaryDirectory() as tmp_dir:
         builder.save_json(tmp_dir)
 
-        # Verify files were created
         assert os.path.exists(os.path.join(tmp_dir, "wordpress_hash_files.json"))
         assert os.path.exists(os.path.join(tmp_dir, "drupal_hash_files.json"))
 
-        # Verify content format matches Wapiti expectations
-        with open(os.path.join(tmp_dir, "wordpress_hash_files.json")) as f:
-            wp_data = json.load(f)
-
-        assert wp_data["wp-admin/css/about.css"]["hash1"] == ["4.5", "4.5.1"]
-        assert wp_data["wp-admin/css/about.css"]["hash2"] == ["4.6"]
-
-        # Test loading back
+        # Load back
         builder2 = JsonBuilder()
         builder2.load_json(tmp_dir)
 
-        data = builder2.get_technology_data("wordpress")
+        wp_data = builder2.get_technology_data("wordpress")
+        assert sorted(wp_data["wp-admin/css/about.css"]["hash1"]) == ["4.5", "4.5.1"]
+        assert wp_data["wp-admin/css/about.css"]["hash2"] == ["4.6"]
+
+        drupal_data = builder2.get_technology_data("drupal")
+        assert drupal_data["core/misc/ajax.js"]["hash3"] == ["8.0"]
+
+
+def test_load_legacy_format():
+    """Test that legacy format (without _meta) still loads correctly."""
+    legacy_data = {
+        "wp-admin/css/about.css": {
+            "hash1": ["4.5", "4.5.1"],
+            "hash2": ["4.6"],
+        }
+    }
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        filepath = os.path.join(tmp_dir, "wordpress_hash_files.json")
+        with open(filepath, "w") as f:
+            json.dump(legacy_data, f)
+
+        builder = JsonBuilder()
+        builder.load_json(tmp_dir)
+
+        data = builder.get_technology_data("wordpress")
         assert data["wp-admin/css/about.css"]["hash1"] == ["4.5", "4.5.1"]
+        assert data["wp-admin/css/about.css"]["hash2"] == ["4.6"]
 
 
 def test_load_json_nonexistent_dir():
@@ -127,8 +175,26 @@ def test_incremental_update():
         builder2.save_json(tmp_dir)
 
         # Verify merged results
-        with open(os.path.join(tmp_dir, "wordpress_hash_files.json")) as f:
-            data = json.load(f)
+        builder3 = JsonBuilder()
+        builder3.load_json(tmp_dir)
 
-        assert data["a.css"]["h1"] == ["1.0", "1.1"]
+        data = builder3.get_technology_data("wordpress")
+        assert sorted(data["a.css"]["h1"]) == ["1.0", "1.1"]
         assert data["b.css"]["h2"] == ["1.0"]
+
+
+def test_save_deduplicates_versions():
+    """Test that duplicate versions are deduplicated on save."""
+    builder = JsonBuilder()
+    builder.add_entry("wp", "a.css", "h1", "1.0")
+    builder.add_entry("wp", "a.css", "h1", "1.0")  # duplicate
+    builder.add_entry("wp", "a.css", "h1", "1.1")
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        builder.save_json(tmp_dir)
+
+        builder2 = JsonBuilder()
+        builder2.load_json(tmp_dir)
+
+        data = builder2.get_technology_data("wp")
+        assert sorted(data["a.css"]["h1"]) == ["1.0", "1.1"]
