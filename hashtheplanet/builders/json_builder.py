@@ -123,7 +123,9 @@ class JsonBuilder:
             }
 
             with open(output_path, "w", encoding="utf-8") as file_fp:
-                json.dump(output, file_fp, indent=4)
+                # Compact separators: these files are consumed by tools, not read by hand,
+                # and the whitespace of indent=4 is ~40% of the total size.
+                json.dump(output, file_fp, separators=(",", ":"))
 
     def load_json(self, output_dir: str):
         """
