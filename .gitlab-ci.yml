@@ -1,16 +1,41 @@
 stages:
   - lint
   - test
+  - build
   - release
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+  OVERWRITE:
+    value: "false"
+    description: "Régénérer tous les hashes sans réutiliser les fichiers de la release précédente"
+
+default:
+  image: python:3.14
 
 .python_setup: &python_setup
   before_script:
     - python -m pip install --upgrade pip
     - pip install -r requirements.txt
     - pip install .
+
+# Les pipelines planifiés ne servent qu'à régénérer la base de hashes :
+# ni lint ni tests n'y sont exécutés.
+.skip_on_schedule: &skip_on_schedule
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - when: on_success
+
+# Régénération de la base : planifiée, manuelle, ou quand la liste des
+# technologies change sur la branche par défaut.
+.release_rules: &release_rules
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "web"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - src/tech_list.json
 
 cache:
   key: pip-cache
@@ -21,8 +46,7 @@ cache:
 
 pylint:
   stage: lint
-  image: python:3.14
-  <<: *python_setup
+  <<: [*python_setup, *skip_on_schedule]
   script:
     - pip install pylint pytest
     - pylint --rcfile=.pylintrc hashtheplanet tests
@@ -31,8 +55,7 @@ pylint:
 
 test:
   stage: test
-  image: python:3.14
-  <<: *python_setup
+  <<: [*python_setup, *skip_on_schedule]
   script:
     - pip install pytest pytest-cov
     - pytest --cov=hashtheplanet tests/
@@ -40,8 +63,7 @@ test:
 
 integration:
   stage: test
-  image: python:3.14
-  <<: *python_setup
+  <<: [*python_setup, *skip_on_schedule]
   script:
     - echo '{"git":{"targets":["https://github.com/jashkenas/underscore.git"]},"npm":{"targets":["underscore"]}}' > tech.json
     - hashtheplanet --input ./tech.json --json-dir output/
@@ -51,45 +73,77 @@ integration:
       - output/
     expire_in: 1 week
 
-# ---------- Release ----------
+# ---------- Build ----------
 
 generate_hash_files:
-  stage: release
-  image: python:3.14
-  <<: *python_setup
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      changes:
-        - src/tech_list.json
-    - if: $CI_PIPELINE_SOURCE == "web"
+  stage: build
+  <<: [*python_setup, *release_rules]
+  # Ne dépend d'aucun artefact des étapes précédentes.
+  dependencies: []
+  timeout: 3h
   cache:
-    key: git-repos
-    paths:
-      - .git-cache/
+    - key: pip-cache
+      paths:
+        - .pip-cache/
+    - key: git-repos
+      paths:
+        - .git-cache/
   script:
+    - mkdir -p dist/
     - |
       if [ "$OVERWRITE" != "true" ]; then
-        # Download previous JSON files from the latest release if they exist
-        apt-get update -qq && apt-get install -y -qq curl jq > /dev/null
-        RELEASE_URL=$(curl -s --header "PRIVATE-TOKEN: $CI_JOB_TOKEN"
-          "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/releases/permalink/latest" |
-          jq -r '.assets.links[]? | select(.name | endswith("_hash_files.json")) | .direct_asset_url' 2>/dev/null || true)
-        mkdir -p dist/
-        for url in $RELEASE_URL; do
-          curl -s --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" -o "dist/$(basename $url)" "$url" || true
-        done
+        echo "Récupération des fichiers JSON du dernier build réussi..."
+        if curl -sSfL --remove-on-error --header "JOB-TOKEN: $CI_JOB_TOKEN" -o previous.zip \
+             "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/jobs/artifacts/${CI_DEFAULT_BRANCH}/download?job=${CI_JOB_NAME}"; then
+          python -m zipfile -e previous.zip .
+          rm -f previous.zip
+          ls -la dist/
+        else
+          echo "Aucun artefact précédent disponible : génération complète."
+        fi
       fi
-    - mkdir -p dist/
     - hashtheplanet --input src/tech_list.json --json-dir dist/ --cache-dir .git-cache --workers 4
+    # Transmis au job de release : `tag_name` n'interprète pas le shell.
+    - |
+      {
+        echo "RELEASE_TAG=${CI_COMMIT_SHORT_SHA}-$(date +%Y-%m-%d)"
+        echo "RELEASE_DATE=$(date +%Y-%m-%d)"
+        echo "HASH_JOB_ID=${CI_JOB_ID}"
+      } > release.env
   artifacts:
     paths:
       - dist/*_hash_files.json
+    reports:
+      dotenv: release.env
     expire_in: never
+
+# ---------- Release ----------
+
+release_hash_files:
+  stage: release
+  # `release:` a besoin de glab (ou release-cli), absents de l'image python.
+  image:
+    name: registry.gitlab.com/gitlab-org/cli:latest
+    entrypoint: [""]
+  <<: *release_rules
+  variables:
+    GIT_STRATEGY: none
+  cache: []
+  needs:
+    - job: generate_hash_files
+      artifacts: true
+  script:
+    - echo "Publication de la release $RELEASE_TAG"
   release:
-    tag_name: "${CI_COMMIT_SHORT_SHA}-$(date +%Y-%m-%d)"
-    description: "Hash files release"
+    tag_name: "$RELEASE_TAG"
+    ref: "$CI_COMMIT_SHA"
+    name: "Hash files release: $RELEASE_DATE"
+    description: "Fichiers de hashes générés le $RELEASE_DATE depuis $CI_COMMIT_SHORT_SHA."
     assets:
       links:
-        - name: "Hash files"
-          url: "${CI_PROJECT_URL}/-/jobs/${CI_JOB_ID}/artifacts/download"
+        - name: "Fichiers de hashes (archive ZIP)"
+          url: "${CI_PROJECT_URL}/-/jobs/${HASH_JOB_ID}/artifacts/download"
+          link_type: "package"
+        - name: "Fichiers de hashes (parcourir)"
+          url: "${CI_PROJECT_URL}/-/jobs/${HASH_JOB_ID}/artifacts/browse/dist"
+          link_type: "other"
